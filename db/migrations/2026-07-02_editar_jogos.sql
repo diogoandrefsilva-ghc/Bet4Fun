@@ -69,3 +69,22 @@ END; $$;
 GRANT EXECUTE ON FUNCTION bet4fun.update_match(bigint, text, timestamptz) TO authenticated;
 GRANT EXECUTE ON FUNCTION bet4fun.add_market(bigint, text, text, text[]) TO authenticated;
 GRANT EXECUTE ON FUNCTION bet4fun.remove_market(bigint) TO authenticated;
+
+-- Apagar um jogo: devolve as apostas dos mercados não liquidados e apaga
+-- o jogo (mercados/opções/apostas em cascade). Mercados já liquidados
+-- mantêm os pagamentos no ledger — só desaparece o histórico do jogo.
+CREATE OR REPLACE FUNCTION bet4fun.remove_match(p_match_id bigint)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = bet4fun AS $$
+BEGIN
+  IF NOT bet4fun.is_admin() THEN RAISE EXCEPTION 'Apenas admin'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM matches WHERE id = p_match_id) THEN
+    RAISE EXCEPTION 'Jogo inexistente';
+  END IF;
+  INSERT INTO transactions(profile_id, amount, kind, ref_bet_id)
+    SELECT b.profile_id, b.stake, 'refund', b.id
+    FROM bets b JOIN markets m ON m.id = b.market_id
+    WHERE m.match_id = p_match_id AND m.status NOT IN ('settled','void');
+  DELETE FROM matches WHERE id = p_match_id;
+END; $$;
+
+GRANT EXECUTE ON FUNCTION bet4fun.remove_match(bigint) TO authenticated;

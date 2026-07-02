@@ -53,6 +53,7 @@ async function navigate() {
     return;
   }
   updateTabs(route || "jogos");
+  $(".main")?.scrollTo(0, 0);
   window.scrollTo(0, 0);
 }
 
@@ -770,7 +771,25 @@ async function renderEditarJogo(matchId) {
         </div>
         <button class="btn-small" onclick="adminAddMarket('${escapeAttr(match.id)}',${MARKET_CATALOG.indexOf(c)})">+ Abrir</button>
       </div>`).join("") : `<div class="empty" style="padding:20px"><span class="ico">✅</span>Já tens todos os mercados do catálogo.</div>`}
+
+    <div class="section-label">Zona perigosa</div>
+    <div class="card">
+      <p style="font-size:0.82rem;color:var(--text-dim);margin-bottom:12px">
+        Apagar o jogo remove-o de vez, com todos os mercados. As fichas apostadas
+        em mercados por liquidar são devolvidas aos jogadores.
+      </p>
+      <button class="btn-danger-outline" onclick="adminRemoveMatch('${escapeAttr(match.id)}','${escapeAttr(`${match.teamA} vs ${match.teamB}`)}')">Apagar jogo 🗑️</button>
+    </div>
   `);
+}
+
+async function adminRemoveMatch(matchId, label) {
+  if (!confirm(`Apagar "${label}"? Isto remove o jogo e todos os mercados. As apostas por liquidar são devolvidas.`)) return;
+  try {
+    await API.removeMatch(matchId);
+    toast("Jogo apagado 🗑️");
+    location.hash = "#/admin";
+  } catch (e) { toast(`❌ ${e.message}`); }
 }
 
 async function saveMatchEdit(matchId) {
@@ -984,6 +1003,6 @@ Object.assign(window, {
   approvePlayer, approveBailout,
   saveScore, pickWinner, voidMarket,
   submitCreateMatch,
-  saveMatchEdit, adminAddMarket, adminRemoveMarket,
+  saveMatchEdit, adminAddMarket, adminRemoveMarket, adminRemoveMatch,
   espnImportAll, espnSettle,
 });

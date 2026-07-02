@@ -480,6 +480,11 @@ const liveAPI = {
     if (error) throwErr(error, "Falha ao remover o mercado");
     return { ok: true };
   },
+  async removeMatch(matchId) {
+    const { error } = await supabase.rpc("remove_match", { p_match_id: Number(matchId) });
+    if (error) throwErr(error, "Falha ao apagar o jogo");
+    return { ok: true };
+  },
   async createMatch(payload) {
     const { error } = await supabase.rpc("create_match_with_markets", {
       p_stage: payload.stage,
