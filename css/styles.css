@@ -48,6 +48,7 @@ body {
   color: var(--text);
   -webkit-font-smoothing: antialiased;
   overscroll-behavior-y: none;
+  touch-action: manipulation;
 }
 
 button { font: inherit; cursor: pointer; border: none; background: none; color: inherit; }
