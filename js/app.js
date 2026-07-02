@@ -1,13 +1,13 @@
 /* ============================================================
-   O Casino da Malta — app (router + ecrãs)
+   Bet4Fun — app (router + ecrãs)
    ------------------------------------------------------------
-   Agora ligado ao Supabase via js/api.js. Cada render*() busca
-   dados reais (ou fictícios em modo demo — ver js/config.js).
-   As funções chamadas por onclick inline são expostas em window
-   no fim do ficheiro (este módulo é ESM).
+   Ligado ao Supabase via js/api.js. Cada render*() busca dados
+   reais. As funções chamadas por onclick inline são expostas em
+   window no fim do ficheiro (este módulo é ESM).
    ============================================================ */
 
-import { API, DEMO_MODE } from "./api.js";
+import { API } from "./api.js";
+import { IS_CONFIGURED } from "./config.js";
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -69,14 +69,14 @@ function updateTabs(route) {
 /* ---------- Estados globais (loading / erro) ---------- */
 
 function loadingScreen(msg = "A carregar…") {
-  return `<div class="empty"><span class="ico">🎲</span>${msg}</div>`;
+  return `<div class="empty"><span class="ico">⚽</span>${msg}</div>`;
 }
 
 function renderError(e) {
   console.error(e);
   $("#app").innerHTML = `
     <div class="login">
-      <div class="big-logo">🎲💥</div>
+      <div class="big-logo">⚽💥</div>
       <h1>Ups.</h1>
       <p class="tagline">${escapeHtml(e?.message || "Algo correu mal.")}</p>
       <button class="btn-secondary" style="max-width:320px" onclick="location.reload()">Tentar de novo</button>
@@ -88,26 +88,29 @@ function renderError(e) {
 function renderLogin() {
   $("#app").innerHTML = `
     <div class="login">
-      <div class="big-logo">🎲</div>
-      <h1>O Casino da Malta</h1>
-      <p class="tagline">Mundial 2026 · Prognósticos, picardia e fichas a rolar entre amigos.</p>
+      <div class="big-logo">⚽</div>
+      <h1>Bet4Fun</h1>
+      <p class="tagline">Mundial 2026 · Prognósticos de futebol e picardia entre amigos. Zero dinheiro real — só fichas e prestígio.</p>
+
+      <div class="login-card">
+        <div class="lc-title">Como funciona</div>
+        <ol class="rules">
+          <li><span class="n">1</span><span class="t">Recebes <strong>fichas virtuais</strong> quando o admin te aprova.</span></li>
+          <li><span class="n">2</span><span class="t">Apostas fichas no resultado dos jogos <strong>antes do apito</strong>.</span></li>
+          <li><span class="n">3</span><span class="t">Quem acerta divide o <strong>pote</strong> de cada aposta entre si. Sobes (ou afundas) na tabela.</span></li>
+        </ol>
+      </div>
+
       <button class="btn-google" onclick="doLogin()">
         <span class="g">G</span> Entrar com o Google
       </button>
-      ${DEMO_MODE ? `<p class="fine">⚙️ <strong>Modo demo</strong> — dados fictícios. Preenche <code>js/config.js</code> com o teu projeto Supabase para ligar a sério.</p>`
-                  : `<p class="fine">Só para a malta convidada. Fichas virtuais, zero dinheiro real — a única coisa em jogo é o teu prestígio.</p>`}
+      <p class="fine">Só para a malta convidada. Depois de entrares, ficas à espera que o admin te dê as fichas iniciais.</p>
     </div>`;
 }
 
 async function doLogin() {
   try {
-    await API.signInWithGoogle(); // live: redireciona para o Google e volta
-    if (DEMO_MODE) {
-      state.session = await API.getSession();
-      state.profile = await API.getMyProfile();
-      location.hash = "#/jogos";
-      await navigate();
-    }
+    await API.signInWithGoogle(); // redireciona para o Google e volta
   } catch (e) { renderError(e); }
 }
 
@@ -127,7 +130,7 @@ function renderPending() {
     <div class="login">
       <div class="big-logo">🕰️</div>
       <h1>Quase lá${name}!</h1>
-      <p class="tagline">Estás à espera que o dono do casino te deixe entrar na mesa. Assim que fores aprovado, recebes as tuas fichas iniciais.</p>
+      <p class="tagline">Estás à espera que o admin te deixe entrar no grupo. Assim que fores aprovado, recebes as tuas fichas iniciais.</p>
       <button class="btn-primary" style="max-width:320px" onclick="refreshPending()">Já me aprovaram? Verificar 🔄</button>
       <button class="btn-secondary" style="max-width:320px;margin-top:10px;border-color:transparent;color:var(--text-faint)" onclick="doLogout()">Terminar sessão</button>
     </div>`;
@@ -145,7 +148,7 @@ function shell(content) {
   $("#app").innerHTML = `
     <div class="app">
       <header class="header">
-        <div class="brand"><span class="logo">🎲</span> O Casino da Malta</div>
+        <div class="brand"><span class="logo">⚽</span> Bet4Fun</div>
         <div class="chip-balance">🪙 ${chips}</div>
       </header>
       <main class="main">${content}</main>
@@ -370,7 +373,7 @@ async function confirmBet() {
     const matchId = state.detail.match.id;
     closeSlip();
     toast(`Aposta registada: ${s.optionLabel} · 🪙 ${s.stake} 🤐`);
-    if (!DEMO_MODE) state.profile = await API.getMyProfile();
+    state.profile = await API.getMyProfile();
     await renderJogoDetalhe(matchId);
   } catch (e) {
     if (btn) { btn.disabled = false; btn.textContent = "Confirmar aposta 🤫"; }
@@ -425,7 +428,7 @@ async function renderClassificacao() {
 
   shell(`
     <h1 class="page-title">Classificação</h1>
-    <p class="page-sub">Quem manda no casino e quem está na penúria</p>
+    <p class="page-sub">Quem manda na tabela e quem está na penúria</p>
     ${players.length ? players.map((p, i) => `
       <div class="lb-row ${i === 0 ? "king" : ""} ${p.isMe ? "me" : ""}">
         <span class="lb-rank">${i === 0 ? "👑" : i + 1}</span>
@@ -472,6 +475,16 @@ async function renderPerfil() {
         : `<span style="font-size:0.85rem;color:var(--text-faint)">Ainda sem títulos. Joga mais.</span>`}
     </div>
 
+    <div class="section-label">Como funciona</div>
+    <div class="card">
+      <ol class="rules">
+        <li><span class="n">1</span><span class="t">Cada jogo tem mercados (ex.: <strong>Resultado 1X2</strong>). Escolhes uma opção e apostas fichas <strong>antes do apito inicial</strong>.</span></li>
+        <li><span class="n">2</span><span class="t">As apostas de todos vão para um <strong>pote</strong>. São secretas até ao jogo começar — depois o livro abre.</span></li>
+        <li><span class="n">3</span><span class="t">No fim, quem acertou <strong>divide o pote</strong> na proporção do que apostou. Ninguém acerta → devolve-se tudo.</span></li>
+        <li><span class="n">4</span><span class="t">Sem fichas? Pede um <strong>bailout</strong> aqui em baixo (com direito ao badge da vergonha 💸).</span></li>
+      </ol>
+    </div>
+
     <div class="section-label">Zona de emergência</div>
     <div class="card">
       <p style="font-size:0.85rem;color:var(--text-dim);margin-bottom:12px">
@@ -510,13 +523,13 @@ async function renderAdmin() {
   shell(`
     <button class="back-btn" onclick="location.hash='#/perfil'">← Perfil</button>
     <h1 class="page-title">🎛️ Painel de Admin</h1>
-    <p class="page-sub">Gerir o casino sem sujar as mãos</p>
+    <p class="page-sub">Gerir o Bet4Fun sem sujar as mãos</p>
 
     <div class="section-label">Jogadores por aprovar</div>
     ${pending.length ? pending.map((p) => `
       <div class="card admin-item">
         <span class="lb-avatar">${p.avatar}</span>
-        <div class="desc"><div class="t">${escapeHtml(p.who)}</div><div class="s">Quer entrar na mesa</div></div>
+        <div class="desc"><div class="t">${escapeHtml(p.who)}</div><div class="s">Quer entrar no grupo</div></div>
         <button class="btn-small" onclick="approvePlayer('${escapeAttr(p.id)}')">Aprovar</button>
       </div>`).join("") : `<div class="empty" style="padding:20px"><span class="ico">✅</span>Ninguém à espera.</div>`}
 
@@ -630,7 +643,7 @@ async function renderCriarJogo() {
   shell(`
     <button class="back-btn" onclick="location.hash='#/admin'">← Admin</button>
     <h1 class="page-title">Criar jogo</h1>
-    <p class="page-sub">Gera o pacote standard de mercados automaticamente</p>
+    <p class="page-sub">Abre só os mercados essenciais: 1X2, Mais/Menos 2.5 e Resultado exato</p>
     <div class="card">
       ${inp("nStage", "Fase (ex: Fase de grupos)", "Fase de grupos")}
       <div style="display:flex;gap:10px">
@@ -641,7 +654,7 @@ async function renderCriarJogo() {
       </div>
       ${inp("nKickoff", "Kickoff (2026-06-11T20:00)")}
       <label style="display:flex;align-items:center;gap:8px;font-size:0.9rem;color:var(--text-dim);margin-bottom:14px">
-        <input id="nKnockout" type="checkbox"> Jogo a eliminar (adiciona prolongamento/penáltis)
+        <input id="nKnockout" type="checkbox"> Jogo a eliminar (adiciona mercado "Decisão por penáltis")
       </label>
       <button class="btn-primary" onclick="submitCreateMatch()">Criar jogo + mercados</button>
     </div>
@@ -673,9 +686,21 @@ function escapeHtml(str) {
 }
 function escapeAttr(str) { return escapeHtml(str).replace(/'/g, "\\'"); }
 
+/* ---------- Ecrã: falta configurar o Supabase ---------- */
+
+function renderSetup() {
+  $("#app").innerHTML = `
+    <div class="login">
+      <div class="big-logo">🔌</div>
+      <h1>Falta ligar o Supabase</h1>
+      <p class="tagline">Preenche o <code style="font-family:ui-monospace,Menlo,monospace">SUPABASE_URL</code> e a <code style="font-family:ui-monospace,Menlo,monospace">SUPABASE_ANON_KEY</code> em <strong>js/config.js</strong> com os dados do teu projeto (Project Settings → API). Ver <strong>db/README.md</strong>.</p>
+    </div>`;
+}
+
 /* ---------- Arranque + PWA ---------- */
 
 async function boot() {
+  if (!IS_CONFIGURED) { renderSetup(); return; }
   try {
     state.session = await API.getSession();
     if (state.session) state.profile = await API.getMyProfile();

@@ -1,5 +1,5 @@
 -- =====================================================================
--- Bet4Fun / O Casino da Malta — RLS Policies + Grants (bet4fun)
+-- Bet4Fun — RLS Policies + Grants (bet4fun)
 --
 -- PRÉ-REQUISITO: DEPENDE das funções em functions.sql
 --   bet4fun.is_admin()

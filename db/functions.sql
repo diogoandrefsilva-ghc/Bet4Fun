@@ -1,5 +1,5 @@
 -- =====================================================================
--- Bet4Fun / O Casino da Malta — Funções, RPCs e Triggers (bet4fun)
+-- Bet4Fun — Funções, RPCs e Triggers (bet4fun)
 -- Correr DEPOIS de schema.sql e ANTES de policies.sql.
 --
 -- Princípio (SPECS §1): o cliente nunca escreve saldos, nunca liquida
@@ -211,7 +211,10 @@ END; $$;
 -- Criação de conteúdo (admin)
 -- ---------------------------------------------------------------------
 
--- Criar jogo + pacote standard de mercados
+-- Criar jogo + conjunto ENXUTO de mercados
+-- Decisão (ver SPECS §7): numa fase inicial com poucos jogadores, abrimos só
+-- o essencial para não poluir. Se quiseres reabrir os mercados extra (Ambas
+-- marcam, 1ª a marcar, Cartão vermelho, Prolongamento), acrescenta-os aqui.
 CREATE OR REPLACE FUNCTION bet4fun.create_match_with_markets(
   p_stage text, p_team_a text, p_flag_a text, p_team_b text, p_flag_b text,
   p_kickoff_at timestamptz, p_knockout boolean DEFAULT false)
@@ -232,15 +235,7 @@ BEGIN
   INSERT INTO markets(match_id, name, risk, closes_at) VALUES (v_match, 'Mais/Menos 2.5 golos', 'low', p_kickoff_at) RETURNING id INTO v_mk;
   INSERT INTO market_options(market_id, label, sort) VALUES (v_mk, 'Mais 2.5', 0), (v_mk, 'Menos 2.5', 1);
 
-  -- Ambas marcam — risco médio
-  INSERT INTO markets(match_id, name, risk, closes_at) VALUES (v_match, 'Ambas marcam', 'mid', p_kickoff_at) RETURNING id INTO v_mk;
-  INSERT INTO market_options(market_id, label, sort) VALUES (v_mk, 'Sim', 0), (v_mk, 'Não', 1);
-
-  -- Primeira equipa a marcar — risco médio
-  INSERT INTO markets(match_id, name, risk, closes_at) VALUES (v_match, 'Primeira equipa a marcar', 'mid', p_kickoff_at) RETURNING id INTO v_mk;
-  INSERT INTO market_options(market_id, label, sort) VALUES (v_mk, p_team_a, 0), (v_mk, p_team_b, 1), (v_mk, 'Nenhuma', 2);
-
-  -- Resultado exato — risco alto
+  -- Resultado exato — risco alto (o "jackpot")
   INSERT INTO markets(match_id, name, risk, closes_at) VALUES (v_match, 'Resultado exato', 'high', p_kickoff_at) RETURNING id INTO v_mk;
   INSERT INTO market_options(market_id, label, sort) VALUES
     (v_mk,'0-0',0),(v_mk,'1-0',1),(v_mk,'0-1',2),(v_mk,'1-1',3),
@@ -248,14 +243,8 @@ BEGIN
     (v_mk,'2-2',8),(v_mk,'3-0',9),(v_mk,'0-3',10),(v_mk,'3-1',11),
     (v_mk,'1-3',12),(v_mk,'3-2',13),(v_mk,'2-3',14),(v_mk,'3-3',15),(v_mk,'Outro',16);
 
-  -- Cartão vermelho no jogo — risco alto
-  INSERT INTO markets(match_id, name, risk, closes_at) VALUES (v_match, 'Cartão vermelho no jogo', 'high', p_kickoff_at) RETURNING id INTO v_mk;
-  INSERT INTO market_options(market_id, label, sort) VALUES (v_mk, 'Sim', 0), (v_mk, 'Não', 1);
-
+  -- Só nos jogos a eliminar: Decisão por penáltis — risco alto
   IF p_knockout THEN
-    INSERT INTO markets(match_id, name, risk, closes_at) VALUES (v_match, 'Prolongamento', 'mid', p_kickoff_at) RETURNING id INTO v_mk;
-    INSERT INTO market_options(market_id, label, sort) VALUES (v_mk, 'Sim', 0), (v_mk, 'Não', 1);
-
     INSERT INTO markets(match_id, name, risk, closes_at) VALUES (v_match, 'Decisão por penáltis', 'high', p_kickoff_at) RETURNING id INTO v_mk;
     INSERT INTO market_options(market_id, label, sort) VALUES (v_mk, 'Sim', 0), (v_mk, 'Não', 1);
   END IF;
@@ -269,7 +258,7 @@ END; $$;
 CREATE OR REPLACE FUNCTION bet4fun.refresh_badges()
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = bet4fun AS $$
 BEGIN
-  -- 🎩 Rei do Casino: só um, o líder de fichas
+  -- 👑 Rei da Tabela: só um, o líder de fichas
   DELETE FROM badges WHERE code = 'rei';
   INSERT INTO badges(profile_id, code)
     SELECT b.profile_id, 'rei'
@@ -350,7 +339,7 @@ BEGIN
       COALESCE(new.raw_user_meta_data->>'full_name',
                new.raw_user_meta_data->>'name',
                split_part(new.email, '@', 1)),
-      '🎲', v_is_admin, v_is_admin)
+      '⚽', v_is_admin, v_is_admin)
     ON CONFLICT (id) DO NOTHING;
 
   IF v_is_admin THEN

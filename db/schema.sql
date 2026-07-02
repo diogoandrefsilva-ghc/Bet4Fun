@@ -1,5 +1,5 @@
 -- =====================================================================
--- Bet4Fun / O Casino da Malta — Schema DDL (bet4fun)
+-- Bet4Fun — Schema DDL (bet4fun)
 -- Projeto Supabase: diogoandrefsilva-personalapps-database
 -- Fonte de verdade. Correr numa BD limpa, por esta ordem:
 --   schema.sql -> functions.sql -> policies.sql
@@ -20,7 +20,7 @@ CREATE SCHEMA IF NOT EXISTS bet4fun;
 CREATE TABLE bet4fun.profiles (
   id           uuid NOT NULL REFERENCES auth.users ON DELETE CASCADE,
   display_name text NOT NULL,
-  avatar_emoji text NOT NULL DEFAULT '🎲',
+  avatar_emoji text NOT NULL DEFAULT '⚽',
   is_admin     boolean NOT NULL DEFAULT false,
   is_approved  boolean NOT NULL DEFAULT false,
   created_at   timestamptz NOT NULL DEFAULT now(),

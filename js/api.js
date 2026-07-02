@@ -1,9 +1,8 @@
 /* ============================================================
-   Camada de acesso a dados — O Casino da Malta
+   Camada de acesso a dados — Bet4Fun
    ------------------------------------------------------------
-   Um único módulo `API` que o app.js consome. Devolve sempre a
-   MESMA forma de dados, quer esteja em MODO DEMO (dados
-   fictícios de data.js) quer em MODO LIVE (Supabase).
+   Um único módulo `API` que o app.js consome. Fala sempre com o
+   Supabase real (não há modo demo).
 
    Regra de ouro (ver SPECS §1): o cliente NUNCA escreve saldos,
    NUNCA liquida mercados e NUNCA lê apostas alheias antes do
@@ -12,12 +11,10 @@
    ============================================================ */
 
 import { supabase } from "./supabase.js";
-import { DEMO_MODE } from "./config.js";
-import { MOCK } from "./data.js";
 
 /* ---------- Mapa de badges (código → etiqueta visível) ---------- */
 const BADGE_LABELS = {
-  rei: "🎩 Rei do Casino",
+  rei: "👑 Rei da Tabela",
   conservador: "🧊 O Conservador",
   lunatico: "🌪️ O Lunático",
   anti_patria: "🇵🇹 O Anti-Pátria",
@@ -57,73 +54,7 @@ function throwErr(error, fallback) {
 }
 
 /* ============================================================
-   MODO DEMO — devolve os dados fictícios do protótipo
-   ============================================================ */
-const demoAPI = {
-  isDemo: true,
-  _loggedIn: false,
-
-  async getSession() { return this._loggedIn ? { user: { id: "u1", email: MOCK.me.email } } : null; },
-  onAuthChange() { return () => {}; },
-  async signInWithGoogle() { this._loggedIn = true; },
-  async signOut() { this._loggedIn = false; },
-
-  async getMyProfile() {
-    return {
-      id: MOCK.me.id, name: MOCK.me.name, avatar: MOCK.me.avatar,
-      email: MOCK.me.email, chips: MOCK.me.chips,
-      isAdmin: MOCK.me.isAdmin, isApproved: true,
-      badges: ["🎩 Rei do Casino", "🎯 Sniper — acertou um resultado exato", "🔥 3 vitórias seguidas"],
-    };
-  },
-
-  async getMatches() { return MOCK.matches.map((m) => ({ ...m })); },
-  async getFutures() { return MOCK.futures.map((f) => ({ ...f })); },
-
-  async getMatchDetail(matchId) {
-    const match = MOCK.matches.find((x) => x.id === matchId) || MOCK.matches[0];
-    const open = match.status === "open";
-    return {
-      match: { ...match },
-      open,
-      markets: open ? (MOCK.markets[match.id] || MOCK.markets.m1) : [],
-      reveal: open ? [] : (MOCK.reveal[match.id] || []),
-    };
-  },
-
-  async placeBet() { return { ok: true }; },
-  async getMyBets() {
-    return {
-      pending: MOCK.myBets.filter((b) => b.status === "pending"),
-      settled: MOCK.myBets.filter((b) => b.status !== "pending"),
-    };
-  },
-
-  async getLeaderboard() {
-    return MOCK.players.map((p) => ({ ...p, isMe: p.id === MOCK.me.id }));
-  },
-
-  async getProfileStats() { return { ...MOCK.stats }; },
-  async requestBailout() { return { ok: true }; },
-
-  /* Admin */
-  async getPendingPlayers() { return []; },
-  async approvePlayer() { return { ok: true }; },
-  async getBailouts() { return MOCK.admin.bailouts.map((b) => ({ ...b })); },
-  async approveBailout() { return { ok: true }; },
-  async getMatchesToSettle() { return MOCK.admin.toSettle.map((s) => ({ ...s })); },
-  async getSettleForm(matchId) {
-    const match = MOCK.matches.find((x) => x.id === matchId) || MOCK.matches[2];
-    return { match: { ...match }, markets: MOCK.markets[match.id] || MOCK.markets.m1 };
-  },
-  async setMatchScore() { return { ok: true }; },
-  async settleMarket() { return { ok: true }; },
-  async voidMarket() { return { ok: true }; },
-  async createMatch() { return { ok: true }; },
-};
-
-/* ============================================================
-   MODO LIVE — Supabase
+   Supabase — camada de dados real
    ============================================================ */
 const liveAPI = {
   isDemo: false,
@@ -186,7 +117,7 @@ const liveAPI = {
     return {
       id: profile.id,
       name: profile.display_name,
-      avatar: profile.avatar_emoji || "🎲",
+      avatar: profile.avatar_emoji || "⚽",
       email,
       chips: bal?.chips ?? 0,
       isAdmin: !!profile.is_admin,
@@ -298,7 +229,7 @@ const liveAPI = {
         .eq("markets.match_id", matchId);
       reveal = (bets || []).map((b) => ({
         who: b.profiles?.display_name || "?",
-        avatar: b.profiles?.avatar_emoji || "🎲",
+        avatar: b.profiles?.avatar_emoji || "⚽",
         pick: `${b.markets?.name ?? ""} · ${b.market_options?.label ?? ""}`,
         stake: b.stake,
       }));
@@ -372,7 +303,7 @@ const liveAPI = {
     return (data || []).map((p) => ({
       id: p.id,
       name: p.display_name,
-      avatar: p.avatar_emoji || "🎲",
+      avatar: p.avatar_emoji || "⚽",
       chips: p.chips,
       delta: p.delta || 0,
       badges: (p.badge_codes || []).map(badgeLabel),
@@ -410,7 +341,7 @@ const liveAPI = {
       .from("profiles").select("id,display_name,avatar_emoji")
       .eq("is_approved", false).order("created_at", { ascending: true });
     if (error) throwErr(error, "Não consegui carregar os jogadores pendentes");
-    return (data || []).map((p) => ({ id: p.id, who: p.display_name, avatar: p.avatar_emoji || "🎲" }));
+    return (data || []).map((p) => ({ id: p.id, who: p.display_name, avatar: p.avatar_emoji || "⚽" }));
   },
   async approvePlayer(id) {
     const { error } = await supabase.rpc("approve_player", { p_profile_id: id });
@@ -426,7 +357,7 @@ const liveAPI = {
     if (error) throwErr(error, "Não consegui carregar os pedidos de bailout");
     return (data || []).map((b) => ({
       id: b.id, who: b.profiles?.display_name || "?",
-      avatar: b.profiles?.avatar_emoji || "🎲", note: b.note || "",
+      avatar: b.profiles?.avatar_emoji || "⚽", note: b.note || "",
     }));
   },
   async approveBailout(id) {
@@ -509,5 +440,4 @@ const liveAPI = {
   },
 };
 
-export const API = DEMO_MODE ? demoAPI : liveAPI;
-export { DEMO_MODE };
+export const API = liveAPI;

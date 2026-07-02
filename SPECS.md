@@ -1,9 +1,8 @@
-# 📋 SPECS — O Casino da Malta (Mundial 2026)
+# 📋 SPECS — Bet4Fun (Mundial 2026)
 
-Especificação técnica para implementação. O protótipo gráfico neste repo (`index.html` + `css/` + `js/`)
-é a **referência visual e de navegação**: os ecrãs, componentes e textos já estão desenhados.
-O trabalho de implementação é **substituir `js/data.js` (dados fictícios) por dados reais do Supabase**
-e adicionar a lógica descrita abaixo. Não reinventar UI.
+Especificação técnica. A app (`index.html` + `css/` + `js/`) fala com o Supabase real via
+`js/api.js` (não há modo demo). Esta spec descreve o modelo de dados, RLS e RPCs por trás
+dos ecrãs. Não reinventar UI.
 
 > Conceito completo do jogo: ver `CONCEITO.md`.
 
@@ -32,7 +31,7 @@ Assumir sempre que um jogador vai abrir a consola do browser para fazer batota (
 profiles (
   id uuid PK REFERENCES auth.users,
   display_name text NOT NULL,
-  avatar_emoji text DEFAULT '🎲',
+  avatar_emoji text DEFAULT '⚽',
   is_admin boolean DEFAULT false,
   is_approved boolean DEFAULT false,   -- admin aprova entrada no grupo
   created_at timestamptz DEFAULT now()
@@ -134,7 +133,7 @@ CREATE VIEW market_pools AS
 
 1. `supabase.auth.signInWithOAuth({ provider: 'google' })` — único método de login.
 2. Trigger `on_auth_user_created` cria a linha em `profiles` (nome/avatar do Google) com `is_approved=false`.
-3. Utilizador não aprovado vê um ecrã "à espera que o dono do casino te deixe entrar".
+3. Utilizador não aprovado vê um ecrã "à espera que o admin te deixe entrar".
 4. Admin aprova no painel → RPC `approve_player(profile_id)`: seta `is_approved=true` e insere
    transação `initial` com as fichas de `settings('initial_chips')`.
 5. O primeiro utilizador registado (ou email hardcoded em seed) fica `is_admin=true`.
@@ -184,7 +183,7 @@ marcar market.status='settled', winning_option_id
 ### 4.5 Badges automáticos (job/RPC `refresh_badges()` corrida após cada settlement)
 | Code | Título | Regra |
 |---|---|---|
-| `rei` | 🎩 Rei do Casino | 1º do leaderboard (badge dinâmico, só um de cada vez) |
+| `rei` | 👑 Rei da Tabela | 1º do leaderboard (badge dinâmico, só um de cada vez) |
 | `conservador` | 🧊 O Conservador | ≥ 10 apostas e ≥ 80% em mercados `low` |
 | `lunatico` | 🌪️ O Lunático | ≥ 5 apostas e ≥ 60% em `resultado exato` |
 | `anti_patria` | 🇵🇹 O Anti-Pátria | ≥ 3 apostas contra Portugal em jogos de Portugal |
@@ -243,8 +242,11 @@ resultado exato, ambas marcam) automaticamente; admin só confirma.
 ## 7. Criação de conteúdo (admin)
 
 - Form "Criar jogo": equipas, bandeiras (emoji), fase, kickoff. Ao criar, **gerar automaticamente o
-  pacote standard de mercados** (1X2, O/U 2.5, Ambas marcam, 1ª a marcar, Resultado exato, Vermelho no jogo,
-  + Prolongamento/Penáltis nos jogos a eliminar) via função SQL `create_match_with_markets(...)`.
+  conjunto ENXUTO de mercados** via função SQL `create_match_with_markets(...)`. Decisão de produto:
+  numa fase inicial com poucos jogadores, abrir muitos mercados polui e confunde — por isso o
+  conjunto é **global e reduzido**: **1X2**, **Mais/Menos 2.5**, **Resultado exato** (+ **Decisão por
+  penáltis** só nos jogos a eliminar). Reabrir mercados extra (Ambas marcam, 1ª a marcar, Cartão
+  vermelho, Prolongamento) é acrescentá-los nessa função SQL.
 - Mercado "Resultado exato": opções fixas geradas (0-0 … 3-3 + "Outro") para o pool funcionar.
 - Futures criados uma vez no seed (Campeão, Bota de Ouro, Equipa Sensação) com `closes_at` = kickoff do 1º jogo.
 
@@ -254,7 +256,7 @@ resultado exato, ambas marcam) automaticamente; admin só confirma.
 
 - `manifest.webmanifest` e `sw.js` já existem no repo.
 - SW: cache-first **apenas para o shell**; dados do Supabase sempre network (nunca cachear respostas da API).
-- Atualizações: bump do nome de cache `casino-malta-vN` a cada release.
+- Atualizações: bump do nome de cache `bet4fun-vN` a cada release.
 - Ícones: `icons/icon.svg` existe; gerar `icon-192.png` e `icon-512.png` a partir dele (falta fazer).
 
 ---

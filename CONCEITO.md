@@ -1,6 +1,6 @@
-# 🏆 Mundial 2026: O Casino da Malta 🎲
+# 🏆 Mundial 2026: Bet4Fun ⚽
 
-Conceito de uma aplicação recreativa de prognósticos desportivos e mecânicas de casino para jogar entre amigos durante o Mundial 2026. O objetivo é a picardia, a gestão de risco e, acima de tudo, a diversão.
+Conceito de uma aplicação recreativa de prognósticos de futebol e mecânica de apostas mútuas para jogar entre amigos durante o Mundial 2026. O objetivo é a picardia, a gestão de risco e, acima de tudo, a diversão.
 
 ---
 
@@ -23,7 +23,12 @@ Se alguém for demasiado agressivo e perder as fichas todas logo na fase de grup
 
 ## 🎯 2. Tipos de Mercados (Eventos de Jogo)
 
-Os mercados são divididos por níveis de risco para ajudar a malta a delinear a sua estratégia (ir pelo seguro ou arriscar tudo na roleta).
+Os mercados são divididos por níveis de risco para ajudar a malta a delinear a sua estratégia (ir pelo seguro ou arriscar tudo).
+
+> **Nota (fase inicial):** para não poluir a app com poucos jogadores, por defeito só são abertos
+> os mercados essenciais — **1X2**, **Mais/Menos 2.5** e **Resultado exato** (+ **Decisão por penáltis**
+> nos jogos a eliminar). O catálogo completo abaixo é o leque possível; reabrir os restantes é um
+> ajuste em `db/functions.sql` (`create_match_with_markets`).
 
 ### 🟢 Risco Baixo (O Pão Nosso)
 * **Resultado Regular (1X2):** Vitória da Equipa A, Empate ou Vitória da Equipa B (contando apenas os 90 minutos regulamentares).
@@ -51,7 +56,7 @@ Submetidas obrigatoriamente antes do apito inicial do primeiro jogo do Mundial. 
 
 A interface e as regras da app devem ser desenhadas para potenciar a competição saudável no grupo de amigos:
 
-1. **Leaderboard em Tempo Real:** Uma tabela classificativa sempre visível, destacando quem é o "Rei do Casino" (líder de fichas), quem subiu mais na última jornada e quem está na penúria económica.
+1. **Leaderboard em Tempo Real:** Uma tabela classificativa sempre visível, destacando quem é o "Rei da Tabela" (líder de fichas), quem subiu mais na última jornada e quem está na penúria económica.
 2. **O "Blefe" e o Segredo:** Até ao momento exato em que o jogo começa, as apostas de cada jogador são estritamente secretas. Assim que o árbitro apita, a app abre o "livro" e revela onde cada um colocou as suas fichas, gerando discussão imediata no chat de amigos.
 3. **Mural de Estatísticas Individuais:** Pequenos títulos automáticos no perfil de cada utilizador baseados no seu histórico, como:
    * *O Conservador:* Só aposta em mercados de risco baixo.
