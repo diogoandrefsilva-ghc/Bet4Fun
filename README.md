@@ -18,18 +18,19 @@ python3 -m http.server 8000
 
 ## Pôr a funcionar a sério (Supabase)
 
-1. Segue os passos em **`SUPABASE_SETUP.txt`** — cola o SQL no Supabase (cria tabelas,
-   RLS, RPCs, trigger de signup) e ativa o Google OAuth.
-2. Preenche `js/config.js` com o `SUPABASE_URL` e a `SUPABASE_ANON_KEY` do teu projeto.
-3. Aloja o conteúdo estático (GitHub Pages / Netlify / Vercel — HTTPS obrigatório).
-4. Entra com o Google. O email definido em `admin_email` (no SQL) entra como admin; os
+1. Corre o SQL de **`db/`** no Supabase, por ordem: `schema.sql` → `functions.sql` → `policies.sql`
+   (cria o schema `bet4fun`, tabelas, RLS, RPCs, trigger de signup). Ver **`db/README.md`**.
+2. Expõe o schema `bet4fun` na Data API e ativa o **Google OAuth** (passos em `db/README.md`).
+3. Preenche `js/config.js` com o `SUPABASE_URL` e a `SUPABASE_ANON_KEY` do teu projeto.
+4. Aloja o conteúdo estático (GitHub Pages / Netlify / Vercel — HTTPS obrigatório).
+5. Entra com o Google. O email definido em `admin_email` (no SQL) entra como admin; os
    restantes ficam à espera de aprovação no Painel de Admin.
 
 ## Documentos
 
 - **`CONCEITO.md`** — o conceito do jogo (regras, mercados, picardia)
 - **`SPECS.md`** — especificação técnica (modelo de dados, RLS, RPCs, pool betting, fases)
-- **`SUPABASE_SETUP.txt`** — script SQL + passos para o setup do Supabase
+- **`db/`** — SQL do Supabase (`schema.sql`, `functions.sql`, `policies.sql`) + `db/README.md`
 
 ## Stack
 
@@ -47,13 +48,14 @@ js/api.js             camada de dados: queries + RPCs (com fallback demo)
 js/app.js             router + ecrãs (login, jogos, mercados, boletim, classificação,
                       perfil, admin, liquidação, criar jogo)
 js/data.js            dados fictícios (modo demo)
+db/                   SQL do Supabase (schema.sql, functions.sql, policies.sql) + README
 manifest.webmanifest  PWA
 sw.js                 service worker (cache-first só do shell; dados sempre da rede)
-icons/                ícones (falta gerar os PNG 192/512 a partir do icon.svg)
+icons/                ícones PWA (icon.svg + icon-192/512.png)
 ```
 
 ## Segurança
 
 O cliente **nunca** escreve saldos, liquida mercados ou lê apostas alheias antes do apito.
-Tudo isso é imposto por **RLS + RPCs `SECURITY DEFINER`** no Supabase (ver `SUPABASE_SETUP.txt`).
+Tudo isso é imposto por **RLS + RPCs `SECURITY DEFINER`** no Supabase (ver `db/`).
 A `anon key` no `config.js` é pública por design — a service_role key NUNCA vai para o cliente.

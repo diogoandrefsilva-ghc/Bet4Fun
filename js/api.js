@@ -8,7 +8,7 @@
    Regra de ouro (ver SPECS §1): o cliente NUNCA escreve saldos,
    NUNCA liquida mercados e NUNCA lê apostas alheias antes do
    apito. Toda a escrita sensível passa por RPCs SECURITY DEFINER
-   e por RLS no Supabase (ver SUPABASE_SETUP.txt).
+   e por RLS no Supabase (ver db/).
    ============================================================ */
 
 import { supabase } from "./supabase.js";

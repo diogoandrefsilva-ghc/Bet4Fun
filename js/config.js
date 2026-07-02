@@ -13,7 +13,7 @@
 
    ⚠️ A anon key é PÚBLICA por design — pode ficar aqui. A
    segurança vem toda das políticas RLS + RPCs no Supabase
-   (ver SUPABASE_SETUP.txt). NUNCA metas aqui a service_role key.
+   (ver db/README.md). NUNCA metas aqui a service_role key.
    ============================================================ */
 
 export const CONFIG = {
