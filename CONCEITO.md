@@ -1,0 +1,59 @@
+# 🏆 Mundial 2026: O Casino da Malta 🎲
+
+Conceito de uma aplicação recreativa de prognósticos desportivos e mecânicas de casino para jogar entre amigos durante o Mundial 2026. O objetivo é a picardia, a gestão de risco e, acima de tudo, a diversão.
+
+---
+
+## 🕹️ 1. Conceito e Mecânica Geral
+
+O jogo funciona com base numa **moeda virtual (Fichas)**. Cada jogador recebe um orçamento inicial definido pelo Administrador e deve geri-lo ao longo do torneio. 
+
+### 💰 Sistema de Pool Betting (Apostas Mútuas)
+Para evitar a complexidade de gerir *odds* reais e estáticas, o prémio de cada mercado é dinâmico e calculado com base no comportamento do grupo:
+* **A Distribuição:** O total de fichas apostadas num determinado mercado por todos os jogadores acumula num "pote". 
+* **O Prémio:** Quem acertar no prognóstico divide o pote proporcionalmente à quantidade de fichas que apostou. 
+* **A Dinâmica:** Isto cria cenários divertidos. Se quase toda a malta apostar na vitória de Portugal, quem arriscar no empate ou na derrota pode rebentar o *Jackpot* sozinho e saltar para o topo da classificação.
+
+### 📉 O Mecanismo de "Bancarrota" (Bailout)
+Se alguém for demasiado agressivo e perder as fichas todas logo na fase de grupos, o jogo não acaba para essa pessoa:
+* **Pedido de Resgate:** O jogador pode solicitar um "Bailout" ao Administrador para receber um pacote mínimo de fichas de emergência para continuar a jogar.
+* **Penalização de Prestígio:** Quem pede um resgate fica com um *badge* visual permanente no perfil (ex: "Falido", "Caloteiro" ou "Financiado pelo FMI") até ao fim do Mundial.
+
+---
+
+## 🎯 2. Tipos de Mercados (Eventos de Jogo)
+
+Os mercados são divididos por níveis de risco para ajudar a malta a delinear a sua estratégia (ir pelo seguro ou arriscar tudo na roleta).
+
+### 🟢 Risco Baixo (O Pão Nosso)
+* **Resultado Regular (1X2):** Vitória da Equipa A, Empate ou Vitória da Equipa B (contando apenas os 90 minutos regulamentares).
+* **Mais/Menos Golos (Over/Under):** Apostar se o jogo terá mais ou menos de 2.5 golos.
+
+### 🟡 Risco Médio (A Roleta)
+* **Ambas Marcam:** Sim ou Não.
+* **Prolongamento:** O jogo vai ou não a prolongamento?
+* **Primeira Equipa a Marcar:** Equipa A, Equipa B ou Nenhuma.
+
+### 🔴 Risco Alto (O Jackpot)
+* **Resultado Exato:** O placar final correto do jogo (ex: 2-1, 0-3).
+* **Decisão por Penáltis:** O jogo será decidido na marcação de grandes penalidades?
+* **Eventos Disciplinares:** Haverá algum cartão vermelho ou penálti assinalado na partida?
+
+### 👑 Apostas de Longo Prazo (Futures)
+Submetidas obrigatoriamente antes do apito inicial do primeiro jogo do Mundial. Estas fichas ficam cativas no pote até ao final do torneio:
+* **Campeão do Mundo:** Quem levanta a taça.
+* **Melhor Marcador (Bota de Ouro):** O jogador com mais golos no torneio.
+* **Equipa Sensação:** A equipa fora do top mundial que chega mais longe.
+
+---
+
+## 🚀 3. Funcionalidades de Interação & "Picardia"
+
+A interface e as regras da app devem ser desenhadas para potenciar a competição saudável no grupo de amigos:
+
+1. **Leaderboard em Tempo Real:** Uma tabela classificativa sempre visível, destacando quem é o "Rei do Casino" (líder de fichas), quem subiu mais na última jornada e quem está na penúria económica.
+2. **O "Blefe" e o Segredo:** Até ao momento exato em que o jogo começa, as apostas de cada jogador são estritamente secretas. Assim que o árbitro apita, a app abre o "livro" e revela onde cada um colocou as suas fichas, gerando discussão imediata no chat de amigos.
+3. **Mural de Estatísticas Individuais:** Pequenos títulos automáticos no perfil de cada utilizador baseados no seu histórico, como:
+   * *O Conservador:* Só aposta em mercados de risco baixo.
+   * *O Lunático:* Só aposta em resultados exatos impossíveis.
+   * *O Anti-Pátria:* Aposta sistematicamente contra a Seleção Nacional à procura de *odds* altas.
