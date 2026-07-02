@@ -1,7 +1,7 @@
 # 🎲 O Casino da Malta — Mundial 2026
 
 App recreativa de prognósticos desportivos com mecânicas de casino, para jogar entre amigos
-durante o Mundial 2026. Fichas virtuais, pool betting, bancarrotas com badge da vergonha.
+durante o Mundial 2026 (ou outro evento). Fichas virtuais, pool betting, bancarrotas com badge da vergonha.
 
 ## Estado atual
 
