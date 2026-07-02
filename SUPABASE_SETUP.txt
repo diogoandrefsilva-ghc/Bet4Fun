@@ -1,0 +1,597 @@
+================================================================
+  O CASINO DA MALTA — SETUP DO SUPABASE
+  Cola tudo o que está abaixo (a partir de "-- ===== SQL =====")
+  no SQL Editor do Supabase e corre uma vez.
+================================================================
+
+PASSOS (uma só vez):
+
+  1. Cria um projeto em https://supabase.com (grátis chega).
+
+  2. SQL Editor → New query → cola o bloco SQL lá em baixo → RUN.
+     Cria tabelas, views, RLS (segurança), RPCs e o trigger que
+     cria o perfil no primeiro login.
+
+  3. IMPORTANTE — define o teu email de admin.
+     No bloco SQL, na secção "SEED", troca o valor de 'admin_email'
+     pelo TEU Gmail. Esse email entra como ADMIN já aprovado e com
+     as fichas iniciais no primeiro login. (Vem pré-preenchido com
+     diogo.andre.f.silva@gmail.com — muda se for preciso.)
+     Se te esqueceres, corre depois:
+        update settings set value = '"o-teu@gmail.com"'::jsonb where key='admin_email';
+
+  4. Authentication → Providers → Google → Enable.
+     - No Google Cloud Console cria um OAuth Client (tipo Web).
+     - Authorized redirect URI: cola o valor que o Supabase te mostra
+       (algo como https://<ref>.supabase.co/auth/v1/callback).
+     - Copia Client ID + Secret para o Supabase e grava.
+     - Em Authentication → URL Configuration mete o URL onde vais
+       alojar a app (ex: https://<user>.github.io/<repo>/) como
+       Site URL e em Redirect URLs.
+
+  5. Project Settings → API. Copia:
+        Project URL          → js/config.js  → SUPABASE_URL
+        anon / public key    → js/config.js  → SUPABASE_ANON_KEY
+     Assim que preencheres, a app deixa o "modo demo" e passa a
+     comunicar com o Supabase.
+
+  6. Aloja a app (HTTPS obrigatório para PWA + OAuth): GitHub Pages,
+     Netlify ou Vercel servem o conteúdo estático deste repo tal como está.
+
+  7. Entra com o Google. Se fores o admin_email entras logo com fichas.
+     Os outros jogadores ficam "à espera de aprovação" — vais ao
+     Perfil → Painel de Admin → Aprovar.
+
+  Definições ajustáveis a qualquer momento (tabela settings):
+     initial_chips (1000) · bailout_chips (200) · min_stake (5)
+     Ex:  update settings set value='1500'::jsonb where key='initial_chips';
+
+  Checklist anti-batota (testa com a anon key numa consola):
+     • apostar depois do kickoff        → erro "Mercado fechado"
+     • ler apostas de outro antes do apito → 0 linhas
+     • inserir transação a crédito próprio → recusado (sem policy de INSERT)
+     • apostar mais fichas do que tens   → erro "Fichas insuficientes"
+     • não-admin a liquidar/aprovar      → erro "Apenas admin"
+
+
+-- ============================================================
+-- ===== SQL ==================================================
+-- ============================================================
+
+-- ---------- 1. TABELAS ----------
+
+create table if not exists profiles (
+  id           uuid primary key references auth.users on delete cascade,
+  display_name text not null,
+  avatar_emoji text default '🎲',
+  is_admin     boolean not null default false,
+  is_approved  boolean not null default false,
+  created_at   timestamptz not null default now()
+);
+
+create table if not exists settings (
+  key   text primary key,
+  value jsonb not null
+);
+
+create table if not exists transactions (
+  id         bigint generated always as identity primary key,
+  profile_id uuid not null references profiles on delete cascade,
+  amount     int  not null,
+  kind       text not null check (kind in ('initial','bet','payout','refund','bailout','admin_adjust')),
+  ref_bet_id bigint,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_tx_profile on transactions(profile_id);
+
+create table if not exists matches (
+  id         bigint generated always as identity primary key,
+  stage      text not null,
+  team_a     text not null, flag_a text,
+  team_b     text not null, flag_b text,
+  kickoff_at timestamptz not null,
+  score_a    int, score_b int,
+  status     text not null default 'scheduled' check (status in ('scheduled','live','finished','settled'))
+);
+
+create table if not exists markets (
+  id                bigint generated always as identity primary key,
+  match_id          bigint references matches on delete cascade,   -- NULL = future (longo prazo)
+  name              text not null,
+  risk              text not null check (risk in ('low','mid','high','future')),
+  closes_at         timestamptz not null,
+  status            text not null default 'open' check (status in ('open','closed','settled','void')),
+  winning_option_id bigint
+);
+create index if not exists idx_markets_match on markets(match_id);
+
+create table if not exists market_options (
+  id        bigint generated always as identity primary key,
+  market_id bigint not null references markets on delete cascade,
+  label     text not null,
+  sort      int not null default 0
+);
+create index if not exists idx_opts_market on market_options(market_id);
+
+create table if not exists bets (
+  id         bigint generated always as identity primary key,
+  profile_id uuid   not null references profiles on delete cascade,
+  market_id  bigint not null references markets on delete cascade,
+  option_id  bigint not null references market_options on delete cascade,
+  stake      int    not null check (stake > 0),
+  created_at timestamptz not null default now(),
+  unique (profile_id, market_id)          -- 1 aposta por jogador por mercado
+);
+create index if not exists idx_bets_market on bets(market_id);
+
+create table if not exists bailout_requests (
+  id         bigint generated always as identity primary key,
+  profile_id uuid not null references profiles on delete cascade,
+  note       text,
+  status     text not null default 'pending' check (status in ('pending','approved','rejected')),
+  created_at timestamptz not null default now()
+);
+
+create table if not exists badges (
+  id         bigint generated always as identity primary key,
+  profile_id uuid not null references profiles on delete cascade,
+  code       text not null,
+  awarded_at timestamptz not null default now(),
+  unique (profile_id, code)
+);
+
+-- ---------- 2. SEED (AJUSTA O admin_email!) ----------
+
+insert into settings(key, value) values
+  ('initial_chips',              '1000'::jsonb),
+  ('bailout_chips',              '200'::jsonb),
+  ('min_stake',                  '5'::jsonb),
+  ('show_pools_before_kickoff',  'true'::jsonb),
+  ('admin_email',                '"diogo.andre.f.silva@gmail.com"'::jsonb)   -- <<< TROCA AQUI
+on conflict (key) do nothing;
+
+-- ---------- 3. HELPERS ----------
+
+-- lê um setting inteiro com fallback
+create or replace function app_setting_int(p_key text, p_default int)
+returns int language sql stable security definer set search_path = public as $$
+  select coalesce((select (value #>> '{}')::int from settings where key = p_key), p_default);
+$$;
+
+-- é o utilizador atual admin? (SECURITY DEFINER evita recursão de RLS)
+create or replace function is_admin()
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from profiles where id = auth.uid() and is_admin);
+$$;
+
+-- ---------- 4. VIEWS (agregados públicos; correm como owner, contornam RLS) ----------
+
+create or replace view balances as
+  select p.id as profile_id, coalesce(sum(t.amount), 0)::int as chips
+  from profiles p left join transactions t on t.profile_id = p.id
+  group by p.id;
+
+create or replace view market_pools as
+  select market_id, option_id, sum(stake)::int as pool, count(*)::int as n_bets
+  from bets group by market_id, option_id;
+
+create or replace view market_totals as
+  select market_id, sum(stake)::int as pot, count(*)::int as n_bets
+  from bets group by market_id;
+
+create or replace view match_pots as
+  select m.match_id, coalesce(sum(b.stake), 0)::int as pot
+  from markets m left join bets b on b.market_id = m.id
+  where m.match_id is not null
+  group by m.match_id;
+
+create or replace view leaderboard as
+  select p.id, p.display_name, p.avatar_emoji,
+         coalesce(bal.chips, 0)   as chips,
+         coalesce(d.delta, 0)     as delta,
+         coalesce(bg.codes, '{}'::text[]) as badge_codes
+  from profiles p
+  left join balances bal on bal.profile_id = p.id
+  left join (
+    select profile_id, sum(amount)::int as delta
+    from transactions
+    where created_at >= now() - interval '24 hours' and kind <> 'initial'
+    group by profile_id
+  ) d on d.profile_id = p.id
+  left join (
+    select profile_id, array_agg(code order by code) as codes
+    from badges group by profile_id
+  ) bg on bg.profile_id = p.id
+  where p.is_approved;
+
+-- ---------- 5. RLS (o coração da segurança) ----------
+
+alter table profiles         enable row level security;
+alter table transactions     enable row level security;
+alter table matches          enable row level security;
+alter table markets          enable row level security;
+alter table market_options   enable row level security;
+alter table bets             enable row level security;
+alter table bailout_requests enable row level security;
+alter table badges           enable row level security;
+alter table settings         enable row level security;
+
+-- profiles: aprovados vêem todos; cada um vê-se a si; admin vê tudo
+drop policy if exists profiles_select on profiles;
+create policy profiles_select on profiles for select
+  using (is_approved or id = auth.uid() or is_admin());
+-- update do próprio (nome/avatar). is_admin/is_approved ficam congelados por trigger (abaixo)
+drop policy if exists profiles_update on profiles;
+create policy profiles_update on profiles for update
+  using (id = auth.uid()) with check (id = auth.uid());
+
+-- transactions: só as minhas (ou admin). INSERT/UPDATE/DELETE: nenhum (só RPCs SECURITY DEFINER)
+drop policy if exists tx_select on transactions;
+create policy tx_select on transactions for select
+  using (profile_id = auth.uid() or is_admin());
+
+-- conteúdo público (autenticado). Escrita só via RPC (definer) — sem policy de escrita.
+drop policy if exists matches_select on matches;
+create policy matches_select on matches for select using (true);
+drop policy if exists markets_select on markets;
+create policy markets_select on markets for select using (true);
+drop policy if exists options_select on market_options;
+create policy options_select on market_options for select using (true);
+drop policy if exists settings_select on settings;
+create policy settings_select on settings for select using (true);
+drop policy if exists badges_select on badges;
+create policy badges_select on badges for select using (true);
+
+-- bets: A POLICY MAIS IMPORTANTE — segredo até ao apito.
+--   a minha, sempre; as dos outros só depois de closes_at; admin vê tudo.
+drop policy if exists bets_select on bets;
+create policy bets_select on bets for select using (
+  profile_id = auth.uid()
+  or is_admin()
+  or exists (select 1 from markets m where m.id = bets.market_id and now() >= m.closes_at)
+);
+-- sem policies de INSERT/UPDATE/DELETE: apostar só via place_bet().
+
+-- bailout_requests: as minhas (ou admin). INSERT só via request_bailout().
+drop policy if exists bailout_select on bailout_requests;
+create policy bailout_select on bailout_requests for select
+  using (profile_id = auth.uid() or is_admin());
+
+-- congelar colunas privilegiadas em profiles (só admin muda is_admin/is_approved)
+create or replace function profiles_guard()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if (new.is_admin is distinct from old.is_admin
+      or new.is_approved is distinct from old.is_approved)
+     and not is_admin() then
+    new.is_admin := old.is_admin;
+    new.is_approved := old.is_approved;
+  end if;
+  return new;
+end; $$;
+drop trigger if exists trg_profiles_guard on profiles;
+create trigger trg_profiles_guard before update on profiles
+  for each row execute function profiles_guard();
+
+-- ---------- 6. RPCs (toda a lógica sensível) ----------
+
+-- 6.1 apostar
+create or replace function place_bet(p_market_id bigint, p_option_id bigint, p_stake int)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_uid uuid := auth.uid();
+  v_market markets;
+  v_min int;
+  v_bal int;
+  v_old bets;
+  v_bet_id bigint;
+begin
+  if v_uid is null then raise exception 'Não autenticado'; end if;
+  if not exists (select 1 from profiles where id = v_uid and is_approved) then
+    raise exception 'Jogador não aprovado';
+  end if;
+
+  select * into v_market from markets where id = p_market_id for update;
+  if not found then raise exception 'Mercado inexistente'; end if;
+  if v_market.status <> 'open' or now() >= v_market.closes_at then
+    raise exception 'Mercado fechado';
+  end if;
+  if not exists (select 1 from market_options where id = p_option_id and market_id = p_market_id) then
+    raise exception 'Opção inválida';
+  end if;
+
+  v_min := app_setting_int('min_stake', 5);
+  if p_stake < v_min then raise exception 'Aposta mínima: % fichas', v_min; end if;
+
+  select coalesce(sum(amount), 0) into v_bal from transactions where profile_id = v_uid;
+  select * into v_old from bets where profile_id = v_uid and market_id = p_market_id;
+
+  -- se re-apostar, o stake antigo é devolvido antes de validar
+  if p_stake > v_bal + coalesce(v_old.stake, 0) then
+    raise exception 'Fichas insuficientes';
+  end if;
+
+  if v_old.id is not null then
+    insert into transactions(profile_id, amount, kind, ref_bet_id)
+      values (v_uid, v_old.stake, 'refund', v_old.id);
+    update bets set option_id = p_option_id, stake = p_stake, created_at = now()
+      where id = v_old.id returning id into v_bet_id;
+  else
+    insert into bets(profile_id, market_id, option_id, stake)
+      values (v_uid, p_market_id, p_option_id, p_stake) returning id into v_bet_id;
+  end if;
+
+  insert into transactions(profile_id, amount, kind, ref_bet_id)
+    values (v_uid, -p_stake, 'bet', v_bet_id);
+end; $$;
+
+-- 6.2 introduzir resultado (admin)
+create or replace function set_match_result(p_match_id bigint, p_score_a int, p_score_b int)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not is_admin() then raise exception 'Apenas admin'; end if;
+  update matches set score_a = p_score_a, score_b = p_score_b, status = 'finished'
+    where id = p_match_id;
+end; $$;
+
+-- 6.3 liquidar mercado — pool betting (admin)
+create or replace function settle_market(p_market_id bigint, p_winning_option_id bigint)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_market markets;
+  v_pot_total int;
+  v_pot_winner int;
+  r record;
+  v_paid int;
+  v_remainder int;
+  v_top_bet bigint;
+begin
+  if not is_admin() then raise exception 'Apenas admin'; end if;
+  select * into v_market from markets where id = p_market_id for update;
+  if not found then raise exception 'Mercado inexistente'; end if;
+  if v_market.status in ('settled','void') then return; end if;   -- idempotente
+  if not exists (select 1 from market_options where id = p_winning_option_id and market_id = p_market_id) then
+    raise exception 'Opção vencedora inválida';
+  end if;
+
+  select coalesce(sum(stake), 0) into v_pot_total  from bets where market_id = p_market_id;
+  select coalesce(sum(stake), 0) into v_pot_winner from bets where market_id = p_market_id and option_id = p_winning_option_id;
+
+  if v_pot_total = 0 then
+    update markets set status = 'settled', winning_option_id = p_winning_option_id where id = p_market_id;
+    return;
+  end if;
+
+  if v_pot_winner = 0 then
+    -- ninguém acertou: reembolso total (rollover fica para v2)
+    insert into transactions(profile_id, amount, kind, ref_bet_id)
+      select profile_id, stake, 'refund', id from bets where market_id = p_market_id;
+  else
+    -- cada vencedor recebe floor(pot_total * stake / pot_winner)
+    for r in select id, profile_id, stake from bets
+             where market_id = p_market_id and option_id = p_winning_option_id loop
+      insert into transactions(profile_id, amount, kind, ref_bet_id)
+        values (r.profile_id, floor(v_pot_total::numeric * r.stake / v_pot_winner), 'payout', r.id);
+    end loop;
+    -- resto de arredondamento → maior apostador vencedor (determinístico)
+    select coalesce(sum(floor(v_pot_total::numeric * stake / v_pot_winner)), 0)
+      into v_paid from bets where market_id = p_market_id and option_id = p_winning_option_id;
+    v_remainder := v_pot_total - v_paid;
+    if v_remainder > 0 then
+      select id into v_top_bet from bets
+        where market_id = p_market_id and option_id = p_winning_option_id
+        order by stake desc, id asc limit 1;
+      update transactions set amount = amount + v_remainder
+        where ref_bet_id = v_top_bet and kind = 'payout';
+    end if;
+  end if;
+
+  update markets set status = 'settled', winning_option_id = p_winning_option_id where id = p_market_id;
+  perform refresh_badges();
+end; $$;
+
+-- 6.4 anular mercado — reembolso total (admin)
+create or replace function void_market(p_market_id bigint)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_market markets;
+begin
+  if not is_admin() then raise exception 'Apenas admin'; end if;
+  select * into v_market from markets where id = p_market_id for update;
+  if not found then raise exception 'Mercado inexistente'; end if;
+  if v_market.status in ('settled','void') then return; end if;
+  insert into transactions(profile_id, amount, kind, ref_bet_id)
+    select profile_id, stake, 'refund', id from bets where market_id = p_market_id;
+  update markets set status = 'void' where id = p_market_id;
+end; $$;
+
+-- 6.5 pedir resgate
+create or replace function request_bailout(p_note text)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_uid uuid := auth.uid(); v_bal int; v_min int;
+begin
+  if v_uid is null then raise exception 'Não autenticado'; end if;
+  if not exists (select 1 from profiles where id = v_uid and is_approved) then
+    raise exception 'Jogador não aprovado';
+  end if;
+  v_min := app_setting_int('min_stake', 5);
+  select coalesce(sum(amount), 0) into v_bal from transactions where profile_id = v_uid;
+  if v_bal >= v_min then raise exception 'Ainda tens fichas para jogar'; end if;
+  if exists (select 1 from bailout_requests where profile_id = v_uid and status = 'pending') then
+    raise exception 'Já tens um pedido pendente';
+  end if;
+  insert into bailout_requests(profile_id, note) values (v_uid, p_note);
+end; $$;
+
+-- 6.6 aprovar resgate (admin) — dá fichas + badge permanente 'fmi'
+create or replace function approve_bailout(p_request_id bigint)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_req bailout_requests;
+begin
+  if not is_admin() then raise exception 'Apenas admin'; end if;
+  select * into v_req from bailout_requests where id = p_request_id and status = 'pending' for update;
+  if not found then raise exception 'Pedido inexistente ou já tratado'; end if;
+  update bailout_requests set status = 'approved' where id = p_request_id;
+  insert into transactions(profile_id, amount, kind)
+    values (v_req.profile_id, app_setting_int('bailout_chips', 200), 'bailout');
+  insert into badges(profile_id, code) values (v_req.profile_id, 'fmi')
+    on conflict (profile_id, code) do nothing;
+end; $$;
+
+-- 6.7 aprovar jogador (admin) — dá fichas iniciais uma vez
+create or replace function approve_player(p_profile_id uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_rows int;
+begin
+  if not is_admin() then raise exception 'Apenas admin'; end if;
+  update profiles set is_approved = true where id = p_profile_id and is_approved = false;
+  get diagnostics v_rows = row_count;
+  if v_rows > 0 then
+    insert into transactions(profile_id, amount, kind)
+      values (p_profile_id, app_setting_int('initial_chips', 1000), 'initial');
+  end if;
+end; $$;
+
+-- 6.8 criar jogo + pacote standard de mercados (admin)
+create or replace function create_match_with_markets(
+  p_stage text, p_team_a text, p_flag_a text, p_team_b text, p_flag_b text,
+  p_kickoff_at timestamptz, p_knockout boolean default false)
+returns bigint language plpgsql security definer set search_path = public as $$
+declare v_match bigint; v_mk bigint;
+begin
+  if not is_admin() then raise exception 'Apenas admin'; end if;
+
+  insert into matches(stage, team_a, flag_a, team_b, flag_b, kickoff_at)
+    values (p_stage, p_team_a, p_flag_a, p_team_b, p_flag_b, p_kickoff_at)
+    returning id into v_match;
+
+  -- Resultado (1X2) — risco baixo
+  insert into markets(match_id, name, risk, closes_at) values (v_match, 'Resultado (1X2)', 'low', p_kickoff_at) returning id into v_mk;
+  insert into market_options(market_id, label, sort) values (v_mk, p_team_a, 0), (v_mk, 'Empate', 1), (v_mk, p_team_b, 2);
+
+  -- Mais/Menos 2.5 golos — risco baixo
+  insert into markets(match_id, name, risk, closes_at) values (v_match, 'Mais/Menos 2.5 golos', 'low', p_kickoff_at) returning id into v_mk;
+  insert into market_options(market_id, label, sort) values (v_mk, 'Mais 2.5', 0), (v_mk, 'Menos 2.5', 1);
+
+  -- Ambas marcam — risco médio
+  insert into markets(match_id, name, risk, closes_at) values (v_match, 'Ambas marcam', 'mid', p_kickoff_at) returning id into v_mk;
+  insert into market_options(market_id, label, sort) values (v_mk, 'Sim', 0), (v_mk, 'Não', 1);
+
+  -- Primeira equipa a marcar — risco médio
+  insert into markets(match_id, name, risk, closes_at) values (v_match, 'Primeira equipa a marcar', 'mid', p_kickoff_at) returning id into v_mk;
+  insert into market_options(market_id, label, sort) values (v_mk, p_team_a, 0), (v_mk, p_team_b, 1), (v_mk, 'Nenhuma', 2);
+
+  -- Resultado exato — risco alto
+  insert into markets(match_id, name, risk, closes_at) values (v_match, 'Resultado exato', 'high', p_kickoff_at) returning id into v_mk;
+  insert into market_options(market_id, label, sort) values
+    (v_mk,'0-0',0),(v_mk,'1-0',1),(v_mk,'0-1',2),(v_mk,'1-1',3),
+    (v_mk,'2-0',4),(v_mk,'0-2',5),(v_mk,'2-1',6),(v_mk,'1-2',7),
+    (v_mk,'2-2',8),(v_mk,'3-0',9),(v_mk,'0-3',10),(v_mk,'3-1',11),
+    (v_mk,'1-3',12),(v_mk,'3-2',13),(v_mk,'2-3',14),(v_mk,'3-3',15),(v_mk,'Outro',16);
+
+  -- Cartão vermelho no jogo — risco alto
+  insert into markets(match_id, name, risk, closes_at) values (v_match, 'Cartão vermelho no jogo', 'high', p_kickoff_at) returning id into v_mk;
+  insert into market_options(market_id, label, sort) values (v_mk, 'Sim', 0), (v_mk, 'Não', 1);
+
+  if p_knockout then
+    insert into markets(match_id, name, risk, closes_at) values (v_match, 'Prolongamento', 'mid', p_kickoff_at) returning id into v_mk;
+    insert into market_options(market_id, label, sort) values (v_mk, 'Sim', 0), (v_mk, 'Não', 1);
+
+    insert into markets(match_id, name, risk, closes_at) values (v_match, 'Decisão por penáltis', 'high', p_kickoff_at) returning id into v_mk;
+    insert into market_options(market_id, label, sort) values (v_mk, 'Sim', 0), (v_mk, 'Não', 1);
+  end if;
+
+  return v_match;
+end; $$;
+
+-- 6.9 recalcular badges automáticos (corre após cada liquidação)
+create or replace function refresh_badges()
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  -- 🎩 Rei do Casino: só um, o líder de fichas
+  delete from badges where code = 'rei';
+  insert into badges(profile_id, code)
+    select b.profile_id, 'rei'
+    from balances b join profiles p on p.id = b.profile_id and p.is_approved
+    order by b.chips desc limit 1
+    on conflict (profile_id, code) do nothing;
+
+  -- 🎯 Sniper: acertou >=1 'Resultado exato'
+  insert into badges(profile_id, code)
+    select distinct bt.profile_id, 'sniper'
+    from bets bt join markets m on m.id = bt.market_id
+    where m.status = 'settled' and m.name ilike 'Resultado exato%'
+      and bt.option_id = m.winning_option_id
+    on conflict (profile_id, code) do nothing;
+
+  -- 🧊 Conservador: >=10 apostas e >=80% em risco baixo
+  insert into badges(profile_id, code)
+    select profile_id, 'conservador' from (
+      select bt.profile_id, count(*) tot, count(*) filter (where m.risk = 'low') low
+      from bets bt join markets m on m.id = bt.market_id group by bt.profile_id
+    ) s where tot >= 10 and low::numeric / tot >= 0.8
+    on conflict (profile_id, code) do nothing;
+
+  -- 🌪️ Lunático: >=5 apostas e >=60% em 'Resultado exato'
+  insert into badges(profile_id, code)
+    select profile_id, 'lunatico' from (
+      select bt.profile_id, count(*) tot, count(*) filter (where m.name ilike 'Resultado exato%') ex
+      from bets bt join markets m on m.id = bt.market_id group by bt.profile_id
+    ) s where tot >= 5 and ex::numeric / tot >= 0.6
+    on conflict (profile_id, code) do nothing;
+
+  -- 🇵🇹 Anti-Pátria: >=3 apostas contra Portugal em jogos de Portugal (1X2)
+  insert into badges(profile_id, code)
+    select profile_id, 'anti_patria' from (
+      select bt.profile_id, count(*) c
+      from bets bt
+      join markets m  on m.id = bt.market_id and m.name ilike 'Resultado (1X2)%'
+      join matches mt on mt.id = m.match_id and (mt.team_a = 'Portugal' or mt.team_b = 'Portugal')
+      join market_options o on o.id = bt.option_id and o.label not in ('Portugal', 'Empate')
+      group by bt.profile_id
+    ) s where c >= 3
+    on conflict (profile_id, code) do nothing;
+end; $$;
+
+-- ---------- 7. TRIGGER: criar perfil no signup ----------
+
+create or replace function handle_new_user()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare v_admin_email text; v_is_admin boolean;
+begin
+  select value #>> '{}' into v_admin_email from settings where key = 'admin_email';
+  v_is_admin := (new.email is not null and new.email = v_admin_email);
+
+  insert into profiles(id, display_name, avatar_emoji, is_admin, is_approved)
+    values (
+      new.id,
+      coalesce(new.raw_user_meta_data->>'full_name',
+               new.raw_user_meta_data->>'name',
+               split_part(new.email, '@', 1)),
+      '🎲', v_is_admin, v_is_admin)
+    on conflict (id) do nothing;
+
+  -- o admin entra já com as fichas iniciais
+  if v_is_admin then
+    insert into transactions(profile_id, amount, kind)
+      values (new.id, app_setting_int('initial_chips', 1000), 'initial');
+  end if;
+  return new;
+end; $$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created after insert on auth.users
+  for each row execute function handle_new_user();
+
+-- ---------- 8. GRANTS ----------
+
+grant usage on schema public to anon, authenticated;
+-- SELECT nas tabelas (a RLS acima é que filtra as linhas); escrita fica só nos RPCs
+grant select on all tables in schema public to authenticated;
+-- views (agregados)
+grant select on balances, market_pools, market_totals, match_pots, leaderboard to authenticated;
+-- executar os RPCs
+grant execute on all functions in schema public to authenticated;
+
+-- ============================================================
+-- ===== FIM ==================================================
+-- ============================================================

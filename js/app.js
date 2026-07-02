@@ -1,15 +1,21 @@
 /* ============================================================
-   O Casino da Malta — protótipo navegável (sem backend)
-   Router por hash + renderização de vistas com dados de data.js.
-   No handoff: cada função render*() corresponde a um ecrã do
-   SPECS.md; a lógica de dados passa para o Supabase.
+   O Casino da Malta — app (router + ecrãs)
+   ------------------------------------------------------------
+   Agora ligado ao Supabase via js/api.js. Cada render*() busca
+   dados reais (ou fictícios em modo demo — ver js/config.js).
+   As funções chamadas por onclick inline são expostas em window
+   no fim do ficheiro (este módulo é ESM).
    ============================================================ */
+
+import { API, DEMO_MODE } from "./api.js";
 
 const $ = (sel) => document.querySelector(sel);
 
 const state = {
-  loggedIn: false,
-  slip: null, // { matchLabel, marketName, optionLabel, stake }
+  session: null,
+  profile: null,
+  slip: null,     // { marketId, optionId, matchLabel, marketName, optionLabel, potTotal, optionPool, stake }
+  detail: null,   // último detalhe de jogo carregado (para o boletim)
 };
 
 /* ---------- Router ---------- */
@@ -22,14 +28,27 @@ const routes = {
   classificacao: renderClassificacao,
   perfil: renderPerfil,
   admin: renderAdmin,
+  settle: renderSettle,
+  criar: renderCriarJogo,
 };
 
-function navigate() {
-  if (!state.loggedIn) { renderLogin(); return; }
+async function navigate() {
+  if (!state.session) { renderLogin(); return; }
+  if (!state.profile) {
+    try { state.profile = await API.getMyProfile(); }
+    catch (e) { renderError(e); return; }
+  }
+  if (!state.profile || !state.profile.isApproved) { renderPending(); return; }
+
   const [route, param] = location.hash.replace(/^#\/?/, "").split("/");
   const view = routes[route] || renderJogos;
   closeSlip();
-  view(param);
+  try {
+    await view(param);
+  } catch (e) {
+    renderError(e);
+    return;
+  }
   updateTabs(route || "jogos");
   window.scrollTo(0, 0);
 }
@@ -37,10 +56,31 @@ function navigate() {
 window.addEventListener("hashchange", navigate);
 
 function updateTabs(route) {
-  const map = { jogos: "jogos", jogo: "jogos", apostas: "apostas", classificacao: "classificacao", perfil: "perfil", admin: "perfil" };
+  const map = {
+    jogos: "jogos", jogo: "jogos", apostas: "apostas",
+    classificacao: "classificacao", perfil: "perfil",
+    admin: "perfil", settle: "perfil", criar: "perfil",
+  };
   document.querySelectorAll(".tab").forEach((t) => {
     t.classList.toggle("active", t.dataset.tab === (map[route] || "jogos"));
   });
+}
+
+/* ---------- Estados globais (loading / erro) ---------- */
+
+function loadingScreen(msg = "A carregar…") {
+  return `<div class="empty"><span class="ico">🎲</span>${msg}</div>`;
+}
+
+function renderError(e) {
+  console.error(e);
+  $("#app").innerHTML = `
+    <div class="login">
+      <div class="big-logo">🎲💥</div>
+      <h1>Ups.</h1>
+      <p class="tagline">${escapeHtml(e?.message || "Algo correu mal.")}</p>
+      <button class="btn-secondary" style="max-width:320px" onclick="location.reload()">Tentar de novo</button>
+    </div>`;
 }
 
 /* ---------- Login ---------- */
@@ -54,30 +94,59 @@ function renderLogin() {
       <button class="btn-google" onclick="doLogin()">
         <span class="g">G</span> Entrar com o Google
       </button>
-      <p class="fine">Só para a malta convidada. Fichas virtuais, zero dinheiro real — a única coisa em jogo é o teu prestígio.</p>
+      ${DEMO_MODE ? `<p class="fine">⚙️ <strong>Modo demo</strong> — dados fictícios. Preenche <code>js/config.js</code> com o teu projeto Supabase para ligar a sério.</p>`
+                  : `<p class="fine">Só para a malta convidada. Fichas virtuais, zero dinheiro real — a única coisa em jogo é o teu prestígio.</p>`}
     </div>`;
 }
 
-function doLogin() {
-  state.loggedIn = true;
-  location.hash = "#/jogos";
-  navigate();
+async function doLogin() {
+  try {
+    await API.signInWithGoogle(); // live: redireciona para o Google e volta
+    if (DEMO_MODE) {
+      state.session = await API.getSession();
+      state.profile = await API.getMyProfile();
+      location.hash = "#/jogos";
+      await navigate();
+    }
+  } catch (e) { renderError(e); }
 }
 
-function doLogout() {
-  state.loggedIn = false;
+async function doLogout() {
+  await API.signOut();
+  state.session = null;
+  state.profile = null;
   location.hash = "";
-  navigate();
+  await navigate();
+}
+
+/* ---------- Ecrã: à espera de aprovação ---------- */
+
+function renderPending() {
+  const name = state.profile?.name ? `, ${escapeHtml(state.profile.name)}` : "";
+  $("#app").innerHTML = `
+    <div class="login">
+      <div class="big-logo">🕰️</div>
+      <h1>Quase lá${name}!</h1>
+      <p class="tagline">Estás à espera que o dono do casino te deixe entrar na mesa. Assim que fores aprovado, recebes as tuas fichas iniciais.</p>
+      <button class="btn-primary" style="max-width:320px" onclick="refreshPending()">Já me aprovaram? Verificar 🔄</button>
+      <button class="btn-secondary" style="max-width:320px;margin-top:10px;border-color:transparent;color:var(--text-faint)" onclick="doLogout()">Terminar sessão</button>
+    </div>`;
+}
+
+async function refreshPending() {
+  state.profile = null;
+  await navigate();
 }
 
 /* ---------- Shell (header + tabbar) ---------- */
 
 function shell(content) {
+  const chips = (state.profile?.chips ?? 0).toLocaleString("pt-PT");
   $("#app").innerHTML = `
     <div class="app">
       <header class="header">
         <div class="brand"><span class="logo">🎲</span> O Casino da Malta</div>
-        <div class="chip-balance">🪙 ${MOCK.me.chips.toLocaleString("pt-PT")}</div>
+        <div class="chip-balance">🪙 ${chips}</div>
       </header>
       <main class="main">${content}</main>
       <nav class="tabbar">
@@ -101,17 +170,18 @@ function matchCard(m) {
     m.status === "open" ? `<span class="tag tag-open">Apostas abertas</span>` :
     `<span class="tag tag-done">Terminado</span>`;
 
-  const mid = m.status === "open"
+  const hasScore = m.scoreA != null && m.scoreB != null;
+  const mid = (m.status === "open" || !hasScore)
     ? `<span class="vs">VS</span><span class="time">${m.kickoff}</span>`
     : `<span class="score">${m.scoreA} – ${m.scoreB}</span><span class="time">${m.kickoff}</span>`;
 
   return `
     <button class="card tappable match-card" onclick="location.hash='#/jogo/${m.id}'">
-      <div class="match-meta"><span class="match-stage">${m.stage}</span>${statusTag}</div>
+      <div class="match-meta"><span class="match-stage">${escapeHtml(m.stage)}</span>${statusTag}</div>
       <div class="match-teams">
-        <div class="match-team"><span class="flag">${m.flagA}</span><span class="name">${m.teamA}</span></div>
+        <div class="match-team"><span class="flag">${m.flagA}</span><span class="name">${escapeHtml(m.teamA)}</span></div>
         <div class="match-mid">${mid}</div>
-        <div class="match-team"><span class="flag">${m.flagB}</span><span class="name">${m.teamB}</span></div>
+        <div class="match-team"><span class="flag">${m.flagB}</span><span class="name">${escapeHtml(m.teamB)}</span></div>
       </div>
       <div class="match-foot">
         <span>${m.status === "open" ? "As apostas fecham ao apito inicial" : m.status === "live" ? "📖 Livro aberto — vê as apostas de todos" : "Mercados liquidados"}</span>
@@ -120,27 +190,32 @@ function matchCard(m) {
     </button>`;
 }
 
-function renderJogos() {
-  const open = MOCK.matches.filter((m) => m.status === "open");
-  const live = MOCK.matches.filter((m) => m.status === "live");
-  const done = MOCK.matches.filter((m) => m.status === "done");
+async function renderJogos() {
+  shell(loadingScreen());
+  const [matches, futures] = await Promise.all([API.getMatches(), API.getFutures()]);
+
+  const open = matches.filter((m) => m.status === "open");
+  const live = matches.filter((m) => m.status === "live");
+  const done = matches.filter((m) => m.status === "done");
 
   shell(`
     <h1 class="page-title">Jogos</h1>
-    <p class="page-sub">Oitavos de final · Mundial 2026</p>
+    <p class="page-sub">Mundial 2026</p>
 
     ${live.length ? `<div class="section-label">A decorrer</div>${live.map(matchCard).join("")}` : ""}
     ${open.length ? `<div class="section-label">Próximos jogos</div>${open.map(matchCard).join("")}` : ""}
+    ${!matches.length ? `<div class="empty"><span class="ico">⚽</span>Ainda não há jogos. O admin que trate disso.</div>` : ""}
 
-    <div class="section-label">👑 Longo prazo (fechadas ao 1.º apito do Mundial)</div>
-    ${MOCK.futures.map((f) => `
-      <div class="card">
-        <div class="market-title-row">
-          <span class="market-title">${f.name}</span>
-          <span class="market-pot">Pote 🪙 ${f.pot}</span>
-        </div>
-        <div class="bet-match">A tua aposta: <strong>${f.myPick}</strong> 🔒</div>
-      </div>`).join("")}
+    ${futures.length ? `
+      <div class="section-label">👑 Longo prazo (fechadas ao 1.º apito do Mundial)</div>
+      ${futures.map((f) => `
+        <div class="card">
+          <div class="market-title-row">
+            <span class="market-title">${escapeHtml(f.name)}</span>
+            <span class="market-pot">Pote 🪙 ${f.pot}</span>
+          </div>
+          <div class="bet-match">${f.myPick ? `A tua aposta: <strong>${escapeHtml(f.myPick)}</strong> ${f.locked ? "🔒" : ""}` : (f.locked ? "🔒 Fechado — não apostaste" : "Ainda podes apostar")}</div>
+        </div>`).join("")}` : ""}
 
     ${done.length ? `<div class="section-label">Terminados</div>${done.map(matchCard).join("")}` : ""}
   `);
@@ -154,15 +229,16 @@ const RISK = {
   high: { name: "Risco alto", sub: "O jackpot", cls: "risk-high-bg" },
 };
 
-function renderJogoDetalhe(matchId) {
-  const m = MOCK.matches.find((x) => x.id === matchId) || MOCK.matches[0];
-  const label = `${m.flagA} ${m.teamA} vs ${m.teamB} ${m.flagB}`;
+async function renderJogoDetalhe(matchId) {
+  shell(loadingScreen());
+  const detail = await API.getMatchDetail(matchId);
+  state.detail = detail;
+  const m = detail.match;
 
   let body;
-  if (m.status === "open") {
-    const markets = MOCK.markets[m.id] || MOCK.markets.m1;
+  if (detail.open) {
     const groups = ["low", "mid", "high"].map((risk) => {
-      const list = markets.filter((mk) => mk.risk === risk);
+      const list = detail.markets.filter((mk) => mk.risk === risk);
       if (!list.length) return "";
       return `
         <div class="market-group">
@@ -174,14 +250,13 @@ function renderJogoDetalhe(matchId) {
           ${list.map((mk) => `
             <div class="card market">
               <div class="market-title-row">
-                <span class="market-title">${mk.name}</span>
+                <span class="market-title">${escapeHtml(mk.name)}</span>
                 <span class="market-pot">Pote 🪙 ${mk.pot}</span>
               </div>
               <div class="options ${mk.options.length === 2 ? "cols-2" : ""}">
                 ${mk.options.map((o) => `
-                  <button class="option-btn" data-opt="${o.id}"
-                    onclick="openSlip('${label.replace(/'/g, "\\'")}','${mk.name.replace(/'/g, "\\'")}','${o.label.replace(/'/g, "\\'")}', this)">
-                    <span class="opt-label">${o.label}</span>
+                  <button class="option-btn" data-opt="${o.id}" onclick="openSlip('${mk.id}','${o.id}', this)">
+                    <span class="opt-label">${escapeHtml(o.label)}</span>
                     <span class="opt-pool">🪙 ${o.pool} no pote</span>
                   </button>`).join("")}
               </div>
@@ -193,19 +268,18 @@ function renderJogoDetalhe(matchId) {
       <div class="callout"><span class="ico">🤫</span>
         <span>As apostas são <strong>secretas</strong> até ao apito inicial. Depois o livro abre e toda a malta vê onde puseste as fichas.</span>
       </div>
-      ${groups}`;
+      ${detail.markets.length ? groups : `<div class="empty"><span class="ico">🃏</span>Sem mercados para este jogo.</div>`}`;
   } else {
-    const reveal = MOCK.reveal[m.id] || [];
     body = `
       <div class="callout warn"><span class="ico">📖</span>
         <span><strong>Livro aberto!</strong> O jogo começou — apostas reveladas. Que comece a picardia.</span>
       </div>
       <div class="card">
-        ${reveal.length ? reveal.map((r) => `
+        ${detail.reveal.length ? detail.reveal.map((r) => `
           <div class="reveal-row">
             <span class="lb-avatar" style="width:32px;height:32px;font-size:1rem">${r.avatar}</span>
-            <span class="reveal-who">${r.who}</span>
-            <span class="reveal-pick">${r.pick}</span>
+            <span class="reveal-who">${escapeHtml(r.who)}</span>
+            <span class="reveal-pick">${escapeHtml(r.pick)}</span>
             <span class="reveal-stake">🪙 ${r.stake}</span>
           </div>`).join("") : `<div class="empty"><span class="ico">🦗</span>Ninguém apostou neste jogo.</div>`}
       </div>`;
@@ -213,47 +287,71 @@ function renderJogoDetalhe(matchId) {
 
   shell(`
     <button class="back-btn" onclick="location.hash='#/jogos'">← Jogos</button>
-    ${matchCard({ ...m })}
+    ${matchCard(m)}
     ${body}
   `);
 }
 
 /* ---------- Boletim (bet slip) ---------- */
 
-function openSlip(matchLabel, marketName, optionLabel, btn) {
+function openSlip(marketId, optionId, btn) {
+  const detail = state.detail;
+  if (!detail) return;
+  const mk = detail.markets.find((x) => String(x.id) === String(marketId));
+  const opt = mk?.options.find((o) => String(o.id) === String(optionId));
+  if (!mk || !opt) return;
+
   document.querySelectorAll(".option-btn.selected").forEach((b) => b.classList.remove("selected"));
-  btn.classList.add("selected");
-  state.slip = { matchLabel, marketName, optionLabel, stake: 25 };
+  if (btn) btn.classList.add("selected");
+
+  state.slip = {
+    marketId, optionId,
+    matchLabel: `${detail.match.flagA} ${detail.match.teamA} vs ${detail.match.teamB} ${detail.match.flagB}`,
+    marketName: mk.name,
+    optionLabel: opt.label,
+    potTotal: mk.pot,
+    optionPool: opt.pool,
+    stake: 25,
+  };
   drawSlip();
+}
+
+function projection(s) {
+  // pool betting: quota do pote total pela fatia da opção (SPECS §6)
+  const newPool = s.optionPool + s.stake;
+  const newTotal = s.potTotal + s.stake;
+  if (newPool <= 0) return s.stake;
+  return Math.round(newTotal * (s.stake / newPool));
 }
 
 function drawSlip() {
   const s = state.slip;
   if (!s) return;
   const el = $("#slip");
+  const maxChips = state.profile?.chips ?? 0;
   el.innerHTML = `
     <div class="slip-inner">
       <div class="slip-row">
         <div>
-          <div class="slip-market">${s.matchLabel} · ${s.marketName}</div>
-          <div class="slip-pick">${s.optionLabel}</div>
+          <div class="slip-market">${escapeHtml(s.matchLabel)} · ${escapeHtml(s.marketName)}</div>
+          <div class="slip-pick">${escapeHtml(s.optionLabel)}</div>
         </div>
         <button class="slip-close" onclick="closeSlip()">✕</button>
       </div>
       <div class="stake-row">
         ${[10, 25, 50, 100].map((v) => `
-          <button class="stake-chip ${s.stake === v ? "selected" : ""}" onclick="setStake(${v})">🪙 ${v}</button>`).join("")}
+          <button class="stake-chip ${s.stake === v ? "selected" : ""}" ${v > maxChips ? "disabled" : ""} onclick="setStake(${v})">🪙 ${v}</button>`).join("")}
       </div>
       <div class="slip-projection">
         <span>Se acertares (pote atual)</span>
-        <strong>≈ 🪙 ${Math.round(s.stake * 2.4)}</strong>
+        <strong>≈ 🪙 ${projection(s)}</strong>
       </div>
-      <button class="btn-primary" onclick="confirmBet()">Confirmar aposta 🤫</button>
+      <button class="btn-primary" ${s.stake > maxChips ? "disabled" : ""} onclick="confirmBet()">Confirmar aposta 🤫</button>
     </div>`;
   el.classList.add("visible");
 }
 
-function setStake(v) { state.slip.stake = v; drawSlip(); }
+function setStake(v) { if (state.slip) { state.slip.stake = v; drawSlip(); } }
 
 function closeSlip() {
   const el = $("#slip");
@@ -262,30 +360,43 @@ function closeSlip() {
   state.slip = null;
 }
 
-function confirmBet() {
+async function confirmBet() {
   const s = state.slip;
-  closeSlip();
-  toast(`Aposta registada: ${s.optionLabel} · 🪙 ${s.stake} 🤐`);
+  if (!s) return;
+  const btn = document.querySelector(".slip-inner .btn-primary");
+  if (btn) { btn.disabled = true; btn.textContent = "A registar…"; }
+  try {
+    await API.placeBet(s.marketId, s.optionId, s.stake);
+    const matchId = state.detail.match.id;
+    closeSlip();
+    toast(`Aposta registada: ${s.optionLabel} · 🪙 ${s.stake} 🤐`);
+    if (!DEMO_MODE) state.profile = await API.getMyProfile();
+    await renderJogoDetalhe(matchId);
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = "Confirmar aposta 🤫"; }
+    toast(`❌ ${e.message}`);
+  }
 }
 
 function toast(msg) {
   const t = $("#toast");
+  if (!t) return;
   t.textContent = msg;
   t.classList.add("show");
-  setTimeout(() => t.classList.remove("show"), 2600);
+  setTimeout(() => t.classList.remove("show"), 2800);
 }
 
 /* ---------- Ecrã: As minhas apostas ---------- */
 
-function renderApostas() {
-  const pending = MOCK.myBets.filter((b) => b.status === "pending");
-  const settled = MOCK.myBets.filter((b) => b.status !== "pending");
+async function renderApostas() {
+  shell(loadingScreen());
+  const { pending, settled } = await API.getMyBets();
 
   const row = (b) => `
     <div class="bet-row">
       <div class="bet-info">
-        <div class="bet-match">${b.match}</div>
-        <div class="bet-pick">${b.pick}</div>
+        <div class="bet-match">${escapeHtml(b.match)}</div>
+        <div class="bet-pick">${escapeHtml(b.pick)}</div>
         ${b.secret ? `<span class="bet-secret">🤫 Secreta até ao apito inicial</span>` : ""}
       </div>
       <div class="bet-stake">
@@ -302,56 +413,63 @@ function renderApostas() {
     <div class="section-label">Em jogo</div>
     ${pending.length ? pending.map(row).join("") : `<div class="empty"><span class="ico">🎟️</span>Nada em jogo. Cobarde?</div>`}
     <div class="section-label">Histórico</div>
-    ${settled.map(row).join("")}
+    ${settled.length ? settled.map(row).join("") : `<div class="empty"><span class="ico">📜</span>Ainda sem histórico.</div>`}
   `);
 }
 
 /* ---------- Ecrã: Classificação ---------- */
 
-function renderClassificacao() {
+async function renderClassificacao() {
+  shell(loadingScreen());
+  const players = await API.getLeaderboard();
+
   shell(`
     <h1 class="page-title">Classificação</h1>
     <p class="page-sub">Quem manda no casino e quem está na penúria</p>
-    ${MOCK.players.map((p, i) => `
-      <div class="lb-row ${i === 0 ? "king" : ""} ${p.id === MOCK.me.id ? "me" : ""}">
+    ${players.length ? players.map((p, i) => `
+      <div class="lb-row ${i === 0 ? "king" : ""} ${p.isMe ? "me" : ""}">
         <span class="lb-rank">${i === 0 ? "👑" : i + 1}</span>
         <span class="lb-avatar">${p.avatar}</span>
         <div class="lb-info">
-          <div class="lb-name">${p.name}${p.id === MOCK.me.id ? " (tu)" : ""}</div>
-          <div class="lb-badges">${p.badges.join(" · ") || "—"}</div>
+          <div class="lb-name">${escapeHtml(p.name)}${p.isMe ? " (tu)" : ""}</div>
+          <div class="lb-badges">${p.badges.length ? p.badges.map(escapeHtml).join(" · ") : "—"}</div>
         </div>
         <div class="lb-chips">
           <span class="amount">🪙 ${p.chips.toLocaleString("pt-PT")}</span>
-          <span class="delta ${p.delta >= 0 ? "delta-up" : "delta-down"}">${p.delta >= 0 ? "▲" : "▼"} ${Math.abs(p.delta)} esta jornada</span>
+          <span class="delta ${p.delta >= 0 ? "delta-up" : "delta-down"}">${p.delta >= 0 ? "▲" : "▼"} ${Math.abs(p.delta)} recente</span>
         </div>
-      </div>`).join("")}
+      </div>`).join("") : `<div class="empty"><span class="ico">🏆</span>Ainda sem jogadores na mesa.</div>`}
   `);
 }
 
 /* ---------- Ecrã: Perfil ---------- */
 
-function renderPerfil() {
-  const me = MOCK.me;
+async function renderPerfil() {
+  shell(loadingScreen());
+  const me = state.profile;
+  const stats = await API.getProfileStats();
+  const canBailout = me.chips < 5; // limiar mínimo; o servidor valida a sério
+
   shell(`
     <div class="profile-head">
       <div class="profile-avatar">${me.avatar}</div>
       <div>
-        <div class="profile-name">${me.name}</div>
-        <div class="profile-email">${me.email}</div>
+        <div class="profile-name">${escapeHtml(me.name)}</div>
+        <div class="profile-email">${escapeHtml(me.email)}</div>
       </div>
     </div>
 
     <div class="stat-grid">
       <div class="stat-tile"><div class="val">🪙 ${me.chips.toLocaleString("pt-PT")}</div><div class="lbl">Fichas</div></div>
-      <div class="stat-tile"><div class="val">${MOCK.stats.won}/${MOCK.stats.total}</div><div class="lbl">Acertos</div></div>
-      <div class="stat-tile"><div class="val">${MOCK.stats.winRate}</div><div class="lbl">Taxa</div></div>
+      <div class="stat-tile"><div class="val">${stats.won}/${stats.total}</div><div class="lbl">Acertos</div></div>
+      <div class="stat-tile"><div class="val">${stats.winRate}</div><div class="lbl">Taxa</div></div>
     </div>
 
     <div class="section-label">Mural de títulos</div>
     <div class="card">
-      <span class="badge gold">🎩 Rei do Casino</span>
-      <span class="badge">🎯 Sniper — acertou um resultado exato</span>
-      <span class="badge">🔥 3 vitórias seguidas</span>
+      ${me.badges && me.badges.length
+        ? me.badges.map((b) => `<span class="badge ${b.includes("FMI") ? "shame" : b.includes("Rei") ? "gold" : ""}">${escapeHtml(b)}</span>`).join("")
+        : `<span style="font-size:0.85rem;color:var(--text-faint)">Ainda sem títulos. Joga mais.</span>`}
     </div>
 
     <div class="section-label">Zona de emergência</div>
@@ -360,7 +478,9 @@ function renderPerfil() {
         Sem fichas? Pede um resgate ao Administrador. Atenção: ficas com o badge
         <strong>💸 Financiado pelo FMI</strong> até ao fim do Mundial. Sem vergonha não há jogo.
       </p>
-      <button class="btn-danger-outline" onclick="toast('Pedido de bailout enviado ao Admin 💸')">Pedir Bailout 🆘</button>
+      <button class="btn-danger-outline" ${canBailout ? "" : `disabled style="opacity:.5"`} onclick="doBailout()">
+        ${canBailout ? "Pedir Bailout 🆘" : "Bailout (só quando estiveres teso)"}
+      </button>
     </div>
 
     ${me.isAdmin ? `
@@ -371,46 +491,217 @@ function renderPerfil() {
   `);
 }
 
+async function doBailout() {
+  try {
+    await API.requestBailout("Perdi tudo… manda lá fichas 🙏");
+    toast("Pedido de bailout enviado ao Admin 💸");
+  } catch (e) { toast(`❌ ${e.message}`); }
+}
+
 /* ---------- Ecrã: Admin ---------- */
 
-function renderAdmin() {
-  const a = MOCK.admin;
+async function renderAdmin() {
+  if (!state.profile?.isAdmin) { location.hash = "#/perfil"; return; }
+  shell(loadingScreen());
+  const [pending, bailouts, toSettle] = await Promise.all([
+    API.getPendingPlayers(), API.getBailouts(), API.getMatchesToSettle(),
+  ]);
+
   shell(`
     <button class="back-btn" onclick="location.hash='#/perfil'">← Perfil</button>
     <h1 class="page-title">🎛️ Painel de Admin</h1>
     <p class="page-sub">Gerir o casino sem sujar as mãos</p>
 
+    <div class="section-label">Jogadores por aprovar</div>
+    ${pending.length ? pending.map((p) => `
+      <div class="card admin-item">
+        <span class="lb-avatar">${p.avatar}</span>
+        <div class="desc"><div class="t">${escapeHtml(p.who)}</div><div class="s">Quer entrar na mesa</div></div>
+        <button class="btn-small" onclick="approvePlayer('${escapeAttr(p.id)}')">Aprovar</button>
+      </div>`).join("") : `<div class="empty" style="padding:20px"><span class="ico">✅</span>Ninguém à espera.</div>`}
+
     <div class="section-label">Pedidos de bailout</div>
-    ${a.bailouts.map((b) => `
+    ${bailouts.length ? bailouts.map((b) => `
       <div class="card admin-item">
         <span class="lb-avatar">${b.avatar}</span>
-        <div class="desc"><div class="t">${b.who}</div><div class="s">"${b.note}"</div></div>
-        <button class="btn-small" onclick="toast('Bailout aprovado. ${b.who} ficou marcado 💸')">Aprovar</button>
-      </div>`).join("")}
+        <div class="desc"><div class="t">${escapeHtml(b.who)}</div><div class="s">"${escapeHtml(b.note)}"</div></div>
+        <button class="btn-small" onclick="approveBailout('${escapeAttr(b.id)}','${escapeAttr(b.who)}')">Aprovar</button>
+      </div>`).join("") : `<div class="empty" style="padding:20px"><span class="ico">💸</span>Sem pedidos de resgate.</div>`}
 
     <div class="section-label">Liquidar mercados</div>
-    ${a.toSettle.map((s) => `
+    ${toSettle.length ? toSettle.map((s) => `
       <div class="card admin-item">
-        <div class="desc"><div class="t">${s.match}</div><div class="s">${s.detail}</div></div>
-        <button class="btn-small outline" onclick="toast('Ecrã de liquidação (no produto final)')">Liquidar</button>
-      </div>`).join("")}
+        <div class="desc"><div class="t">${escapeHtml(s.match)}</div><div class="s">${escapeHtml(s.detail)}</div></div>
+        <button class="btn-small outline" onclick="location.hash='#/settle/${s.id}'">Liquidar</button>
+      </div>`).join("") : `<div class="empty" style="padding:20px"><span class="ico">🧾</span>Nada por liquidar.</div>`}
 
     <div class="section-label">Gestão</div>
     <div class="card admin-item">
-      <div class="desc"><div class="t">Criar jogo / mercados</div><div class="s">Adicionar próximos jogos e mercados por nível de risco</div></div>
-      <button class="btn-small outline" onclick="toast('Formulário de criação (no produto final)')">Criar</button>
-    </div>
-    <div class="card admin-item">
-      <div class="desc"><div class="t">Jogadores &amp; fichas iniciais</div><div class="s">Convidar malta, definir orçamento inicial (atual: 🪙 1000)</div></div>
-      <button class="btn-small outline" onclick="toast('Gestão de jogadores (no produto final)')">Gerir</button>
+      <div class="desc"><div class="t">Criar jogo / mercados</div><div class="s">Gera automaticamente o pacote de mercados por nível de risco</div></div>
+      <button class="btn-small outline" onclick="location.hash='#/criar'">Criar</button>
     </div>
   `);
 }
 
+async function approvePlayer(id) {
+  try { await API.approvePlayer(id); toast("Jogador aprovado — fichas entregues 🪙"); await renderAdmin(); }
+  catch (e) { toast(`❌ ${e.message}`); }
+}
+
+async function approveBailout(id, who) {
+  try { await API.approveBailout(id); toast(`Bailout aprovado. ${who} ficou marcado 💸`); await renderAdmin(); }
+  catch (e) { toast(`❌ ${e.message}`); }
+}
+
+/* ---------- Ecrã: Liquidação de um jogo (admin) ---------- */
+
+async function renderSettle(matchId) {
+  if (!state.profile?.isAdmin) { location.hash = "#/perfil"; return; }
+  shell(loadingScreen());
+  const { match, markets } = await API.getSettleForm(matchId);
+
+  const scoreKnown = match.scoreA != null && match.scoreB != null;
+  const marketCard = (mk) => `
+    <div class="card">
+      <div class="market-title-row">
+        <span class="market-title">${escapeHtml(mk.name)}</span>
+        <span class="market-pot" style="color:var(--text-faint)">${settleStatusLabel(mk.status)}</span>
+      </div>
+      ${mk.status === "settled" || mk.status === "void" ? "" : `
+        <div class="options ${mk.options.length === 2 ? "cols-2" : ""}">
+          ${mk.options.map((o) => `
+            <button class="option-btn ${mk.winningOptionId === o.id ? "selected" : ""}" onclick="pickWinner('${matchId}','${mk.id}','${o.id}')">
+              <span class="opt-label">${escapeHtml(o.label)}</span>
+            </button>`).join("")}
+        </div>
+        <button class="btn-small outline" style="margin-top:10px" onclick="voidMarket('${matchId}','${mk.id}')">Anular (reembolso)</button>`}
+    </div>`;
+
+  shell(`
+    <button class="back-btn" onclick="location.hash='#/admin'">← Admin</button>
+    <h1 class="page-title">Liquidar jogo</h1>
+    <p class="page-sub">${match.flagA} ${escapeHtml(match.teamA)} vs ${escapeHtml(match.teamB)} ${match.flagB}</p>
+
+    <div class="card">
+      <div class="section-label" style="margin-top:0">Resultado (90 min)</div>
+      <div style="display:flex;align-items:center;gap:10px;justify-content:center">
+        <input id="scoreA" type="number" min="0" inputmode="numeric" value="${match.scoreA ?? ""}" style="width:64px;text-align:center;font-size:1.3rem;font-weight:800;padding:10px;background:var(--bg-elev);border:1px solid var(--border);border-radius:10px;color:var(--text)">
+        <span style="font-weight:800">–</span>
+        <input id="scoreB" type="number" min="0" inputmode="numeric" value="${match.scoreB ?? ""}" style="width:64px;text-align:center;font-size:1.3rem;font-weight:800;padding:10px;background:var(--bg-elev);border:1px solid var(--border);border-radius:10px;color:var(--text)">
+      </div>
+      <button class="btn-primary" style="margin-top:12px" onclick="saveScore('${matchId}')">Guardar resultado</button>
+    </div>
+
+    <div class="callout"><span class="ico">🏁</span>
+      <span>${scoreKnown ? "Toca na opção <strong>vencedora</strong> de cada mercado para liquidar (paga o pote proporcionalmente ao stake)." : "Introduz e guarda o resultado primeiro. Depois liquida cada mercado."}</span>
+    </div>
+
+    ${markets.length ? markets.map(marketCard).join("") : `<div class="empty"><span class="ico">🃏</span>Sem mercados.</div>`}
+  `);
+}
+
+function settleStatusLabel(s) {
+  return s === "settled" ? "✅ Liquidado" : s === "void" ? "🚫 Anulado" : "Por liquidar";
+}
+
+async function saveScore(matchId) {
+  const a = $("#scoreA").value, b = $("#scoreB").value;
+  if (a === "" || b === "") { toast("Preenche o resultado."); return; }
+  try { await API.setMatchScore(matchId, a, b); toast("Resultado guardado 🏁"); await renderSettle(matchId); }
+  catch (e) { toast(`❌ ${e.message}`); }
+}
+
+async function pickWinner(matchId, marketId, optionId) {
+  try { await API.settleMarket(marketId, optionId); toast("Mercado liquidado — potes pagos 🪙"); await renderSettle(matchId); }
+  catch (e) { toast(`❌ ${e.message}`); }
+}
+
+async function voidMarket(matchId, marketId) {
+  try { await API.voidMarket(marketId); toast("Mercado anulado — apostas reembolsadas ↩️"); await renderSettle(matchId); }
+  catch (e) { toast(`❌ ${e.message}`); }
+}
+
+/* ---------- Ecrã: Criar jogo (admin) ---------- */
+
+async function renderCriarJogo() {
+  if (!state.profile?.isAdmin) { location.hash = "#/perfil"; return; }
+  const inp = (id, ph, val = "") =>
+    `<input id="${id}" placeholder="${ph}" value="${val}" style="width:100%;padding:12px;background:var(--bg-elev);border:1px solid var(--border);border-radius:10px;color:var(--text);margin-bottom:10px">`;
+  shell(`
+    <button class="back-btn" onclick="location.hash='#/admin'">← Admin</button>
+    <h1 class="page-title">Criar jogo</h1>
+    <p class="page-sub">Gera o pacote standard de mercados automaticamente</p>
+    <div class="card">
+      ${inp("nStage", "Fase (ex: Fase de grupos)", "Fase de grupos")}
+      <div style="display:flex;gap:10px">
+        ${inp("nFlagA", "🇵🇹")}${inp("nTeamA", "Equipa A")}
+      </div>
+      <div style="display:flex;gap:10px">
+        ${inp("nFlagB", "🇲🇽")}${inp("nTeamB", "Equipa B")}
+      </div>
+      ${inp("nKickoff", "Kickoff (2026-06-11T20:00)")}
+      <label style="display:flex;align-items:center;gap:8px;font-size:0.9rem;color:var(--text-dim);margin-bottom:14px">
+        <input id="nKnockout" type="checkbox"> Jogo a eliminar (adiciona prolongamento/penáltis)
+      </label>
+      <button class="btn-primary" onclick="submitCreateMatch()">Criar jogo + mercados</button>
+    </div>
+  `);
+}
+
+async function submitCreateMatch() {
+  const g = (id) => $(id).value.trim();
+  const payload = {
+    stage: g("#nStage"), teamA: g("#nTeamA"), flagA: g("#nFlagA"),
+    teamB: g("#nTeamB"), flagB: g("#nFlagB"),
+    kickoffAt: g("#nKickoff"), knockout: $("#nKnockout").checked,
+  };
+  if (!payload.teamA || !payload.teamB || !payload.kickoffAt) { toast("Preenche equipas e kickoff."); return; }
+  try {
+    const d = new Date(payload.kickoffAt); // aceita 'YYYY-MM-DDTHH:MM' local
+    if (!isNaN(d)) payload.kickoffAt = d.toISOString();
+    await API.createMatch(payload);
+    toast("Jogo criado 🎉");
+    location.hash = "#/admin";
+  } catch (e) { toast(`❌ ${e.message}`); }
+}
+
+/* ---------- Utilitários ---------- */
+
+function escapeHtml(str) {
+  return String(str ?? "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function escapeAttr(str) { return escapeHtml(str).replace(/'/g, "\\'"); }
+
 /* ---------- Arranque + PWA ---------- */
 
-navigate();
+async function boot() {
+  try {
+    state.session = await API.getSession();
+    if (state.session) state.profile = await API.getMyProfile();
+  } catch (e) { renderError(e); return; }
+
+  API.onAuthChange(async (session) => {
+    state.session = session;
+    state.profile = session ? await API.getMyProfile().catch(() => null) : null;
+    await navigate();
+  });
+
+  await navigate();
+}
+
+boot();
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
 }
+
+/* ---------- Expor handlers usados por onclick inline ---------- */
+Object.assign(window, {
+  doLogin, doLogout, refreshPending,
+  openSlip, closeSlip, setStake, confirmBet,
+  doBailout,
+  approvePlayer, approveBailout,
+  saveScore, pickWinner, voidMarket,
+  submitCreateMatch,
+});

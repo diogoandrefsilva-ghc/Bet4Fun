@@ -1,10 +1,11 @@
 /* ============================================================
-   Dados fictícios (mock) — no produto final vêm do Supabase.
-   Mantido separado do app.js para o handoff ser óbvio:
-   substituir este ficheiro por chamadas à API.
+   Dados fictícios (mock) — usados no MODO DEMO.
+   A api.js recorre a estes dados enquanto o Supabase não
+   estiver configurado (ver js/config.js). Com credenciais
+   reais, tudo isto é substituído por chamadas ao Supabase.
    ============================================================ */
 
-const MOCK = {
+export const MOCK = {
   me: {
     id: "u1",
     name: "Diogo",
