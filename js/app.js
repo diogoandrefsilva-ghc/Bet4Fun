@@ -8,6 +8,7 @@
 
 import { API } from "./api.js";
 import { IS_CONFIGURED } from "./config.js";
+import { fetchEspnEvents, computeSettlement, teamPt, teamFlag, pairKey } from "./espn.js";
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -30,6 +31,7 @@ const routes = {
   admin: renderAdmin,
   settle: renderSettle,
   criar: renderCriarJogo,
+  espn: renderEspn,
 };
 
 async function navigate() {
@@ -59,7 +61,7 @@ function updateTabs(route) {
   const map = {
     jogos: "jogos", jogo: "jogos", apostas: "apostas",
     classificacao: "classificacao", perfil: "perfil",
-    admin: "perfil", settle: "perfil", criar: "perfil",
+    admin: "perfil", settle: "perfil", criar: "perfil", espn: "perfil",
   };
   document.querySelectorAll(".tab").forEach((t) => {
     t.classList.toggle("active", t.dataset.tab === (map[route] || "jogos"));
@@ -550,7 +552,11 @@ async function renderAdmin() {
 
     <div class="section-label">Gestão</div>
     <div class="card admin-item">
-      <div class="desc"><div class="t">Criar jogo / mercados</div><div class="s">Gera automaticamente o pacote de mercados por nível de risco</div></div>
+      <div class="desc"><div class="t">⚡ Importar do ESPN</div><div class="s">Traz os jogos previstos e liquida resultados automaticamente</div></div>
+      <button class="btn-small" onclick="location.hash='#/espn'">Abrir</button>
+    </div>
+    <div class="card admin-item">
+      <div class="desc"><div class="t">Criar jogo à mão</div><div class="s">Cria um jogo com os mercados enxutos (1X2, Mais/Menos, Resultado exato)</div></div>
       <button class="btn-small outline" onclick="location.hash='#/criar'">Criar</button>
     </div>
   `);
@@ -678,6 +684,125 @@ async function submitCreateMatch() {
   } catch (e) { toast(`❌ ${e.message}`); }
 }
 
+/* ---------- Ecrã: Importar/Liquidar via ESPN (admin) ---------- */
+
+async function renderEspn() {
+  if (!state.profile?.isAdmin) { location.hash = "#/perfil"; return; }
+  shell(loadingScreen("A falar com o ESPN…"));
+
+  const ours = await API.getMatches();
+  const datesMs = ours.map((m) => new Date(m.kickoffAt).getTime());
+
+  let games = [];
+  let failed = false;
+  try { games = await fetchEspnEvents(datesMs); }
+  catch { failed = true; }
+  if (!failed && !games.length) failed = true; // nada veio → provável bloqueio/erro
+
+  // casar por par de equipas (em PT, como guardamos na BD)
+  const ourByPair = {};
+  ours.forEach((m) => { ourByPair[pairKey(m.teamA, m.teamB)] = m; });
+
+  state.espn = { games, ours, ourByPair };
+
+  const upcoming = games.filter((g) => g.state !== "post" && !ourByPair[pairKey(teamPt(g.teamAEn), teamPt(g.teamBEn))]);
+  const finished = games
+    .filter((g) => g.state === "post" && ourByPair[pairKey(teamPt(g.teamAEn), teamPt(g.teamBEn))])
+    .map((g) => ({ g, m: ourByPair[pairKey(teamPt(g.teamAEn), teamPt(g.teamBEn))] }));
+
+  const gameLabel = (g) =>
+    `${teamFlag(g.teamAEn)} ${escapeHtml(teamPt(g.teamAEn))} vs ${escapeHtml(teamPt(g.teamBEn))} ${teamFlag(g.teamBEn)}`;
+
+  shell(`
+    <button class="back-btn" onclick="location.hash='#/admin'">← Admin</button>
+    <h1 class="page-title">⚡ ESPN</h1>
+    <p class="page-sub">Jogos e resultados ao vivo, direto do ESPN</p>
+
+    ${failed ? `<div class="callout warn"><span class="ico">📡</span>
+      <span>Não consegui ler o ESPN agora (pode estar em baixo, sem jogos nas datas, ou bloqueado pela rede). Tenta de novo, ou usa o "Criar jogo à mão".</span></div>` : ""}
+
+    <div class="section-label">Importar jogos previstos</div>
+    ${upcoming.length ? `
+      <div class="callout"><span class="ico">📥</span>
+        <span>${upcoming.length} jogo(s) do ESPN ainda não estão cá. Cria-os com os mercados enxutos (penáltis nos de eliminar).</span></div>
+      <button class="btn-primary" style="margin-bottom:12px" onclick="espnImportAll()">Importar ${upcoming.length} jogo(s)</button>
+      ${upcoming.map((g) => `
+        <div class="card admin-item">
+          <div class="desc"><div class="t">${gameLabel(g)}</div>
+            <div class="s">${escapeHtml(g.stagePt)} · ${escapeHtml(fmtEspnDate(g.kickoffISO))}</div></div>
+        </div>`).join("")}`
+      : `<div class="empty" style="padding:20px"><span class="ico">✅</span>Sem jogos novos para importar.</div>`}
+
+    <div class="section-label">Liquidar resultados terminados</div>
+    ${finished.length ? finished.map(({ g, m }) => {
+      const s = (g.scoreA != null && g.scoreB != null) ? `${g.scoreA}–${g.scoreB}` : "?";
+      const extra = g.wentToPens ? " · foi a penáltis 🥅" : g.beyond90 ? " · prolongamento" : "";
+      return `
+        <div class="card">
+          <div class="market-title-row">
+            <span class="market-title">${gameLabel(g)}</span>
+            <span class="market-pot" style="color:var(--text)">${s}${extra}</span>
+          </div>
+          <div class="s" style="font-size:0.78rem;color:var(--text-faint);margin-bottom:10px">${escapeHtml(g.stagePt)}</div>
+          <button class="btn-small" onclick="espnSettle('${escapeAttr(m.id)}')">Liquidar este jogo</button>
+          <button class="btn-small outline" style="margin-left:8px" onclick="location.hash='#/settle/${escapeAttr(m.id)}'">Rever à mão</button>
+        </div>`;
+    }).join("") : `<div class="empty" style="padding:20px"><span class="ico">🧾</span>Nenhum jogo terminado por liquidar.</div>`}
+  `);
+}
+
+function fmtEspnDate(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d)) return "";
+  return d.toLocaleString("pt-PT", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+
+async function espnImportAll() {
+  const { games, ourByPair } = state.espn || {};
+  if (!games) return;
+  const upcoming = games.filter((g) => g.state !== "post" && !ourByPair[pairKey(teamPt(g.teamAEn), teamPt(g.teamBEn))]);
+  if (!upcoming.length) { toast("Nada para importar."); return; }
+  let n = 0;
+  for (const g of upcoming) {
+    try {
+      await API.createMatch({
+        stage: g.stagePt,
+        teamA: teamPt(g.teamAEn), flagA: teamFlag(g.teamAEn),
+        teamB: teamPt(g.teamBEn), flagB: teamFlag(g.teamBEn),
+        kickoffAt: g.kickoffISO, knockout: g.knockout,
+      });
+      n++;
+    } catch (e) { toast(`❌ ${teamPt(g.teamAEn)}: ${e.message}`); }
+  }
+  toast(`Importados ${n} jogo(s) 🎉`);
+  await renderEspn();
+}
+
+async function espnSettle(matchId) {
+  const st = state.espn;
+  const m = st?.ours.find((x) => String(x.id) === String(matchId));
+  if (!m) return;
+  const g = st.games.find((x) => x.state === "post" && pairKey(teamPt(x.teamAEn), teamPt(x.teamBEn)) === pairKey(m.teamA, m.teamB));
+  if (!g) { toast("Sem resultado do ESPN para este jogo."); return; }
+
+  try {
+    const { markets } = await API.getSettleForm(matchId);
+    const plan = computeSettlement(g, markets, m.teamA, m.teamB);
+
+    if (plan.score) await API.setMatchScore(matchId, plan.score.a, plan.score.b);
+    let done = 0;
+    for (const s of plan.toSettle) {
+      try { await API.settleMarket(s.marketId, s.optionId); done++; }
+      catch (e) { toast(`❌ ${s.marketName}: ${e.message}`); }
+    }
+    const skippedN = plan.skipped.length;
+    toast(`Liquidados ${done} mercado(s)${skippedN ? ` · ${skippedN} para rever à mão` : ""} 🪙`);
+    if (skippedN) toast(`⚠️ Por liquidar: ${plan.skipped.map((s) => s.name.split(" (")[0]).join(", ")}`);
+    await renderEspn();
+  } catch (e) { toast(`❌ ${e.message}`); }
+}
+
 /* ---------- Utilitários ---------- */
 
 function escapeHtml(str) {
@@ -703,12 +828,17 @@ async function boot() {
   if (!IS_CONFIGURED) { renderSetup(); return; }
   try {
     state.session = await API.getSession();
-    if (state.session) state.profile = await API.getMyProfile();
+    if (state.session) {
+      await API.ensureProfile();               // inscreve no 1.º acesso
+      state.profile = await API.getMyProfile();
+    }
   } catch (e) { renderError(e); return; }
 
   API.onAuthChange(async (session) => {
     state.session = session;
-    state.profile = session ? await API.getMyProfile().catch(() => null) : null;
+    state.profile = session
+      ? await API.ensureProfile().then(() => API.getMyProfile()).catch(() => null)
+      : null;
     await navigate();
   });
 
@@ -729,4 +859,5 @@ Object.assign(window, {
   approvePlayer, approveBailout,
   saveScore, pickWinner, voidMarket,
   submitCreateMatch,
+  espnImportAll, espnSettle,
 });

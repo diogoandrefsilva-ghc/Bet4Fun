@@ -60,8 +60,9 @@ css/styles.css        tema (sportsbook escuro — relvado verde + acento coin)
 js/config.js          ⚙️ credenciais do Supabase (preencher) + flag IS_CONFIGURED
 js/supabase.js        cliente supabase-js (singleton; só criado se configurado)
 js/api.js             camada de dados: queries + RPCs do Supabase
+js/espn.js            integração com a API pública do ESPN (importar jogos + auto-liquidar)
 js/app.js             router + ecrãs (login, jogos, mercados, boletim, classificação,
-                      perfil, admin, liquidação, criar jogo)
+                      perfil, admin, liquidação, criar jogo, ESPN)
 db/                   SQL do Supabase (schema.sql, functions.sql, policies.sql) + README
 manifest.webmanifest  PWA
 sw.js                 service worker (cache-first só do shell; dados sempre da rede)

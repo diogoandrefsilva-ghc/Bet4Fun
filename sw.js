@@ -2,7 +2,7 @@
    No produto final, os dados vêm sempre da rede (Supabase);
    apenas o shell (HTML/CSS/JS/ícones) é servido do cache. */
 
-const CACHE = "bet4fun-v3";
+const CACHE = "bet4fun-v5";
 const SHELL = [
   "./",
   "./index.html",
@@ -10,6 +10,7 @@ const SHELL = [
   "./js/config.js",
   "./js/supabase.js",
   "./js/api.js",
+  "./js/espn.js",
   "./js/app.js",
   "./manifest.webmanifest",
   "./icons/icon.svg",

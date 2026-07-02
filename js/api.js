@@ -91,6 +91,14 @@ const liveAPI = {
   },
   async signOut() { await supabase.auth.signOut(); },
 
+  // Inscreve o utilizador no Bet4Fun no 1.º acesso (cria o perfil se faltar).
+  // O auth.users é partilhado por várias apps — por isso a inscrição é feita
+  // aqui, à chegada, e não por trigger global de signup (ver db/functions.sql).
+  async ensureProfile() {
+    const { error } = await supabase.rpc("ensure_profile");
+    if (error) throwErr(error, "Não foi possível criar o perfil");
+  },
+
   async _requireUid() {
     if (this._uid) return this._uid;
     const s = await this.getSession();

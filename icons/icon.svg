@@ -1,15 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="112" fill="#0b1210"/>
-  <circle cx="256" cy="256" r="182" fill="none" stroke="#2fd06e" stroke-width="16"/>
-  <circle cx="256" cy="256" r="150" fill="#f3f6f4"/>
-  <g stroke="#0b1210" stroke-width="13" stroke-linecap="round" stroke-linejoin="round" fill="none">
-    <!-- seams from central pentagon vertices to the ball edge -->
-    <line x1="256" y1="204" x2="256" y2="106"/>
-    <line x1="305.5" y1="239.9" x2="398.7" y2="209.7"/>
-    <line x1="286.6" y1="298.1" x2="344.2" y2="377.4"/>
-    <line x1="225.4" y1="298.1" x2="167.8" y2="377.4"/>
-    <line x1="206.5" y1="239.9" x2="113.3" y2="209.7"/>
+  <!-- full-bleed background (maskable-safe: sem cantos transparentes) -->
+  <rect width="512" height="512" fill="#0b1210"/>
+  <!-- conteúdo dentro da safe zone (raio < 205 do centro) -->
+  <circle cx="256" cy="256" r="168" fill="none" stroke="#2fd06e" stroke-width="15"/>
+  <circle cx="256" cy="256" r="138" fill="#f3f6f4"/>
+  <g stroke="#0b1210" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <!-- costuras do pentágono central até à borda da bola -->
+    <line x1="256" y1="208" x2="256" y2="118"/>
+    <line x1="301.6" y1="241.1" x2="387.4" y2="213.2"/>
+    <line x1="284.2" y1="294.6" x2="337.2" y2="367.6"/>
+    <line x1="227.8" y1="294.6" x2="174.8" y2="367.6"/>
+    <line x1="210.4" y1="241.1" x2="124.6" y2="213.2"/>
   </g>
-  <!-- central pentagon -->
-  <path d="M256 204 L305.5 239.9 L286.6 298.1 L225.4 298.1 L206.5 239.9 Z" fill="#0b1210"/>
+  <!-- pentágono central -->
+  <path d="M256 208 L301.6 241.1 L284.2 294.6 L227.8 294.6 L210.4 241.1 Z" fill="#0b1210"/>
 </svg>
