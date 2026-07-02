@@ -132,7 +132,9 @@ CREATE VIEW market_pools AS
 ## 3. Autenticação e onboarding
 
 1. `supabase.auth.signInWithOAuth({ provider: 'google' })` — único método de login.
-2. Trigger `on_auth_user_created` cria a linha em `profiles` (nome/avatar do Google) com `is_approved=false`.
+2. A app chama a RPC `ensure_profile()` no 1.º acesso, que cria a linha em `profiles` (nome/avatar do
+   Google) com `is_approved=false`. **Nota:** o `auth.users` é partilhado por várias apps do projeto —
+   por isso a inscrição é feita à chegada ao Bet4Fun (RPC), e **não** por trigger global de signup.
 3. Utilizador não aprovado vê um ecrã "à espera que o admin te deixe entrar".
 4. Admin aprova no painel → RPC `approve_player(profile_id)`: seta `is_approved=true` e insere
    transação `initial` com as fichas de `settings('initial_chips')`.

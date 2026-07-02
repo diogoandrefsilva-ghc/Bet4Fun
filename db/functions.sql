@@ -324,31 +324,48 @@ DROP TRIGGER IF EXISTS trg_profiles_guard ON bet4fun.profiles;
 CREATE TRIGGER trg_profiles_guard BEFORE UPDATE ON bet4fun.profiles
   FOR EACH ROW EXECUTE FUNCTION bet4fun.profiles_guard();
 
--- Criar perfil no signup. O email em settings('admin_email') entra como
--- admin já aprovado e com as fichas iniciais.
-CREATE OR REPLACE FUNCTION bet4fun.handle_new_user()
-RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = bet4fun AS $$
-DECLARE v_admin_email text; v_is_admin boolean;
+-- Inscrição no Bet4Fun — chamada pela app no primeiro acesso do utilizador.
+--
+-- IMPORTANTE: o `auth.users` é PARTILHADO por várias apps neste projeto Supabase.
+-- Por isso NÃO usamos um trigger em auth.users (isso criaria um perfil Bet4Fun
+-- para quem se regista em QUALQUER app). Em vez disso, o perfil só é criado
+-- quando o utilizador abre mesmo o Bet4Fun e a app chama esta RPC.
+--
+-- O email em settings('admin_email') entra como admin já aprovado + fichas iniciais;
+-- os restantes ficam is_approved=false (à espera de aprovação do admin).
+CREATE OR REPLACE FUNCTION bet4fun.ensure_profile()
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = bet4fun AS $$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_email text;
+  v_admin_email text;
+  v_is_admin boolean;
 BEGIN
+  IF v_uid IS NULL THEN RAISE EXCEPTION 'Não autenticado'; END IF;
+  IF EXISTS (SELECT 1 FROM profiles WHERE id = v_uid) THEN RETURN; END IF;  -- já inscrito
+
+  SELECT email INTO v_email FROM auth.users WHERE id = v_uid;
   SELECT value #>> '{}' INTO v_admin_email FROM settings WHERE key = 'admin_email';
-  v_is_admin := (new.email IS NOT NULL AND new.email = v_admin_email);
+  v_is_admin := (v_email IS NOT NULL AND v_email = v_admin_email);
 
   INSERT INTO profiles(id, display_name, avatar_emoji, is_admin, is_approved)
-    VALUES (
-      new.id,
-      COALESCE(new.raw_user_meta_data->>'full_name',
-               new.raw_user_meta_data->>'name',
-               split_part(new.email, '@', 1)),
-      '⚽', v_is_admin, v_is_admin)
+    SELECT v_uid,
+           COALESCE(u.raw_user_meta_data->>'full_name',
+                    u.raw_user_meta_data->>'name',
+                    split_part(u.email, '@', 1)),
+           '⚽', v_is_admin, v_is_admin
+    FROM auth.users u WHERE u.id = v_uid
     ON CONFLICT (id) DO NOTHING;
 
   IF v_is_admin THEN
     INSERT INTO transactions(profile_id, amount, kind)
-      VALUES (new.id, bet4fun.app_setting_int('initial_chips', 1000), 'initial');
+      VALUES (v_uid, bet4fun.app_setting_int('initial_chips', 1000), 'initial');
   END IF;
-  RETURN new;
 END; $$;
 
+GRANT EXECUTE ON FUNCTION bet4fun.ensure_profile() TO authenticated;
+
+-- Remove o antigo trigger de signup (auto-inscrevia todos os utilizadores do
+-- projeto partilhado). Já não é usado — a inscrição passa pela RPC acima.
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-CREATE TRIGGER on_auth_user_created AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE FUNCTION bet4fun.handle_new_user();
+DROP FUNCTION IF EXISTS bet4fun.handle_new_user();

@@ -21,7 +21,9 @@ Corre no SQL Editor do Supabase, **por esta ordem**:
 1. **`schema.sql`** — schema `bet4fun`, tabelas (+ RLS ativa), views (agregados) e seed dos settings.
 2. **`functions.sql`** — helpers (`is_admin`, `app_setting_int`), RPCs (`place_bet`, `settle_market`,
    `void_market`, `request_bailout`, `approve_bailout`, `approve_player`, `create_match_with_markets`,
-   `set_match_result`, `refresh_badges`) e triggers (perfil no signup + congelar colunas privilegiadas).
+   `set_match_result`, `refresh_badges`, `ensure_profile`) e o trigger que congela colunas privilegiadas.
+   A inscrição de perfis é feita pela RPC `ensure_profile()` (chamada pela app), **não** por trigger em
+   `auth.users` — essa tabela é partilhada por várias apps do projeto.
 3. **`policies.sql`** — RLS policies + grants.
 
 `policies.sql` depende de `functions.sql` (usa `bet4fun.is_admin()`). Correr fora de ordem rebenta

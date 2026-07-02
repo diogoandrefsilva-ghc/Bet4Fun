@@ -703,12 +703,17 @@ async function boot() {
   if (!IS_CONFIGURED) { renderSetup(); return; }
   try {
     state.session = await API.getSession();
-    if (state.session) state.profile = await API.getMyProfile();
+    if (state.session) {
+      await API.ensureProfile();               // inscreve no 1.º acesso
+      state.profile = await API.getMyProfile();
+    }
   } catch (e) { renderError(e); return; }
 
   API.onAuthChange(async (session) => {
     state.session = session;
-    state.profile = session ? await API.getMyProfile().catch(() => null) : null;
+    state.profile = session
+      ? await API.ensureProfile().then(() => API.getMyProfile()).catch(() => null)
+      : null;
     await navigate();
   });
 
