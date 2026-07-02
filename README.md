@@ -1,22 +1,37 @@
-# 🎲 O Casino da Malta — Mundial 2026
+# ⚽ Bet4Fun — Mundial 2026
 
-App recreativa de prognósticos desportivos com mecânicas de casino, para jogar entre amigos
-durante o Mundial 2026 (ou outro evento). Fichas virtuais, pool betting, bancarrotas com badge da vergonha.
+App recreativa de prognósticos de futebol, para jogar entre amigos durante o Mundial 2026
+(ou outro evento). Fichas virtuais, pool betting, bancarrotas com badge da vergonha. Zero
+dinheiro real — a única coisa em jogo é o prestígio.
+
+## Como se joga (resumo)
+
+1. O admin aprova cada jogador, que recebe as **fichas iniciais**.
+2. Antes do apito de cada jogo, apostas fichas nos mercados abertos (**1X2**, **Mais/Menos 2.5**,
+   **Resultado exato** — e **Decisão por penáltis** nos jogos a eliminar).
+3. As apostas são **secretas** até ao jogo começar. Depois o "livro" abre e toda a malta vê onde
+   cada um pôs as fichas.
+4. Quem acerta **divide o pote** de cada mercado na proporção do que apostou. Ninguém acerta →
+   reembolso. Sobes (ou afundas) na **classificação**.
+
+> Para não poluir a app numa fase inicial com poucos jogadores, o conjunto de mercados é
+> **enxuto e global** (definido em `db/functions.sql`). Reabrir mercados extra é só descomentar/
+> acrescentar lá.
 
 ## Estado atual
 
-**Ligada ao Supabase.** A app comunica com uma base de dados real (Postgres + Auth com
-Google + RLS). Enquanto o `js/config.js` não tiver credenciais, corre em **modo demo**
-(dados fictícios do protótipo, nada é gravado) — assim que preencheres o URL + anon key,
-passa automaticamente a comunicar com o Supabase.
+**Ligada ao Supabase** (Postgres + Auth com Google + RLS). Não há modo demo: preenche o
+`js/config.js` com o `SUPABASE_URL` + `SUPABASE_ANON_KEY` do teu projeto e a app fala com a base
+de dados real. Enquanto os placeholders não forem substituídos, a app mostra um ecrã de
+configuração.
 
 ```bash
-# correr localmente (modo demo, ou live se já configuraste o config.js)
+# correr localmente (precisa do config.js preenchido)
 python3 -m http.server 8000
 # abrir http://localhost:8000
 ```
 
-## Pôr a funcionar a sério (Supabase)
+## Pôr a funcionar (Supabase)
 
 1. Corre o SQL de **`db/`** no Supabase, por ordem: `schema.sql` → `functions.sql` → `policies.sql`
    (cria o schema `bet4fun`, tabelas, RLS, RPCs, trigger de signup). Ver **`db/README.md`**.
@@ -41,13 +56,12 @@ HTML/CSS/JS vanilla (PWA) + Supabase (Postgres, Auth com Google OAuth, RLS).
 
 ```
 index.html            shell da app (carrega js/app.js como módulo ESM)
-css/styles.css        tema (casino escuro, dourado + feltro)
-js/config.js          ⚙️ credenciais do Supabase (preencher) + flag de modo demo
-js/supabase.js        cliente supabase-js (singleton)
-js/api.js             camada de dados: queries + RPCs (com fallback demo)
+css/styles.css        tema (sportsbook escuro — relvado verde + acento coin)
+js/config.js          ⚙️ credenciais do Supabase (preencher) + flag IS_CONFIGURED
+js/supabase.js        cliente supabase-js (singleton; só criado se configurado)
+js/api.js             camada de dados: queries + RPCs do Supabase
 js/app.js             router + ecrãs (login, jogos, mercados, boletim, classificação,
                       perfil, admin, liquidação, criar jogo)
-js/data.js            dados fictícios (modo demo)
 db/                   SQL do Supabase (schema.sql, functions.sql, policies.sql) + README
 manifest.webmanifest  PWA
 sw.js                 service worker (cache-first só do shell; dados sempre da rede)

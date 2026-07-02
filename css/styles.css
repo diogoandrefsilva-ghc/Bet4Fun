@@ -1,26 +1,31 @@
 /* ============================================================
-   O Casino da Malta — Mundial 2026
-   Tema: casino escuro, dourado + feltro verde
+   Bet4Fun — Mundial 2026
+   Tema: sportsbook escuro (relvado) — verde relva + acento coin
    Mobile-first; max-width container para desktop
    ============================================================ */
 
 :root {
-  --bg: #0e1013;
-  --bg-elev: #171a20;
-  --bg-card: #1c2027;
-  --bg-card-hover: #232833;
-  --border: #2b313c;
-  --text: #e8e6e1;
-  --text-dim: #9aa1ad;
-  --text-faint: #6b7280;
+  --bg: #0b1210;
+  --bg-elev: #121a17;
+  --bg-card: #16211c;
+  --bg-card-hover: #1e2b24;
+  --border: #27352d;
+  --text: #e9f0ec;
+  --text-dim: #9db0a7;
+  --text-faint: #66776e;
 
-  --gold: #f0b429;
-  --gold-soft: rgba(240, 180, 41, 0.14);
-  --felt: #1d7a4f;
-  --felt-soft: rgba(29, 122, 79, 0.16);
+  /* verde relva — marca, ação, seleção, estado ativo */
+  --pitch: #2fd06e;
+  --pitch-soft: rgba(47, 208, 110, 0.14);
+  --pitch-border: rgba(47, 208, 110, 0.42);
+
+  /* âmbar coin — moeda (fichas / potes) e liderança */
+  --accent: #f5c451;
+  --accent-soft: rgba(245, 196, 81, 0.14);
+  --accent-border: rgba(245, 196, 81, 0.42);
 
   --risk-low: #34d17b;
-  --risk-mid: #f0b429;
+  --risk-mid: #f5c451;
   --risk-high: #f0564a;
 
   --win: #34d17b;
@@ -66,7 +71,7 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
   position: sticky; top: 0; z-index: 20;
   display: flex; align-items: center; justify-content: space-between;
   padding: 12px 16px;
-  background: rgba(14, 16, 19, 0.92);
+  background: rgba(11, 18, 16, 0.92);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--border);
 }
@@ -79,9 +84,9 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 
 .chip-balance {
   display: flex; align-items: center; gap: 6px;
-  background: var(--gold-soft);
-  border: 1px solid rgba(240, 180, 41, 0.35);
-  color: var(--gold);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  color: var(--accent);
   font-weight: 700; font-size: 0.9rem;
   padding: 6px 12px;
   border-radius: 999px;
@@ -141,7 +146,7 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
   font-size: 0.78rem; color: var(--text-dim);
 }
 
-.pot-tag { color: var(--gold); font-weight: 700; }
+.pot-tag { color: var(--accent); font-weight: 700; }
 
 /* estados */
 .tag {
@@ -156,7 +161,7 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
   animation: pulse 1.2s infinite;
 }
 @keyframes pulse { 50% { opacity: 0.3; } }
-.tag-open { background: var(--felt-soft); color: var(--risk-low); }
+.tag-open { background: var(--pitch-soft); color: var(--risk-low); }
 .tag-done { background: rgba(154, 161, 173, 0.12); color: var(--text-dim); }
 
 /* ---------- Mercados ---------- */
@@ -173,7 +178,7 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 .market { margin-bottom: 10px; }
 .market-title-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
 .market-title { font-weight: 700; font-size: 0.92rem; }
-.market-pot { font-size: 0.78rem; color: var(--gold); font-weight: 700; }
+.market-pot { font-size: 0.78rem; color: var(--accent); font-weight: 700; }
 
 .options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .options.cols-2 { grid-template-columns: repeat(2, 1fr); }
@@ -189,10 +194,10 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 .option-btn .opt-label { font-size: 0.82rem; font-weight: 700; }
 .option-btn .opt-pool { font-size: 0.7rem; color: var(--text-faint); }
 .option-btn.selected {
-  border-color: var(--gold);
-  background: var(--gold-soft);
+  border-color: var(--pitch);
+  background: var(--pitch-soft);
 }
-.option-btn.selected .opt-label { color: var(--gold); }
+.option-btn.selected .opt-label { color: var(--pitch); }
 .option-btn:disabled { opacity: 0.45; cursor: default; }
 
 /* ---------- Boletim (bet slip) ---------- */
@@ -208,7 +213,7 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
   pointer-events: auto;
   width: 100%; max-width: 480px;
   background: var(--bg-elev);
-  border-top: 1px solid var(--gold);
+  border-top: 1px solid var(--pitch);
   border-radius: 18px 18px 0 0;
   padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
   box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.5);
@@ -228,19 +233,19 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
   font-weight: 700; font-size: 0.9rem;
   text-align: center;
 }
-.stake-chip.selected { border-color: var(--gold); color: var(--gold); background: var(--gold-soft); }
+.stake-chip.selected { border-color: var(--pitch); color: var(--pitch); background: var(--pitch-soft); }
 
 .slip-projection {
   display: flex; justify-content: space-between;
   font-size: 0.82rem; color: var(--text-dim);
   margin-bottom: 12px;
 }
-.slip-projection strong { color: var(--gold); }
+.slip-projection strong { color: var(--accent); }
 
 .btn-primary {
   width: 100%;
-  background: var(--gold);
-  color: #1a1608;
+  background: var(--pitch);
+  color: #05130b;
   font-weight: 800; font-size: 1rem;
   padding: 14px;
   border-radius: var(--radius-sm);
@@ -278,10 +283,10 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
   border-radius: var(--radius);
   margin-bottom: 8px;
 }
-.lb-row.me { border-color: var(--gold); }
+.lb-row.me { border-color: var(--pitch); }
 .lb-row.king {
-  background: linear-gradient(135deg, rgba(240, 180, 41, 0.16), var(--bg-card) 60%);
-  border-color: rgba(240, 180, 41, 0.5);
+  background: linear-gradient(135deg, var(--accent-soft), var(--bg-card) 60%);
+  border-color: var(--accent-border);
 }
 .lb-rank { width: 26px; text-align: center; font-weight: 800; color: var(--text-dim); font-size: 0.95rem; }
 .lb-avatar {
@@ -293,7 +298,7 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 .lb-name { font-weight: 700; font-size: 0.95rem; display: flex; align-items: center; gap: 6px; }
 .lb-badges { font-size: 0.72rem; color: var(--text-faint); margin-top: 2px; }
 .lb-chips { text-align: right; }
-.lb-chips .amount { font-weight: 800; color: var(--gold); }
+.lb-chips .amount { font-weight: 800; color: var(--accent); }
 .lb-chips .delta { font-size: 0.72rem; font-weight: 700; display: block; }
 .delta-up { color: var(--win); }
 .delta-down { color: var(--loss); }
@@ -309,14 +314,14 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
   margin: 0 6px 6px 0;
 }
 .badge.shame { border-color: rgba(240, 86, 74, 0.5); color: var(--risk-high); }
-.badge.gold { border-color: rgba(240, 180, 41, 0.5); color: var(--gold); }
+.badge.gold { border-color: var(--accent-border); color: var(--accent); }
 
 /* ---------- Perfil ---------- */
 .profile-head { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
 .profile-avatar {
   width: 64px; height: 64px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  font-size: 2rem; background: var(--bg-card); border: 2px solid var(--gold);
+  font-size: 2rem; background: var(--bg-card); border: 2px solid var(--pitch);
 }
 .profile-name { font-size: 1.2rem; font-weight: 800; }
 .profile-email { font-size: 0.8rem; color: var(--text-faint); }
@@ -328,6 +333,20 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 }
 .stat-tile .val { font-size: 1.15rem; font-weight: 800; }
 .stat-tile .lbl { font-size: 0.68rem; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 2px; }
+
+/* ---------- Como funciona (regras) ---------- */
+.rules { list-style: none; display: flex; flex-direction: column; gap: 12px; }
+.rules li { display: flex; gap: 12px; align-items: flex-start; }
+.rules .n {
+  flex-shrink: 0;
+  width: 26px; height: 26px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.82rem; font-weight: 800;
+  background: var(--pitch-soft); color: var(--pitch);
+  border: 1px solid var(--pitch-border);
+}
+.rules .t { font-size: 0.86rem; color: var(--text-dim); line-height: 1.45; }
+.rules .t strong { color: var(--text); }
 
 /* ---------- As minhas apostas ---------- */
 .bet-row {
@@ -355,7 +374,7 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 .reveal-row:last-child { border-bottom: none; }
 .reveal-who { display: flex; align-items: center; gap: 8px; flex: 1; font-weight: 700; }
 .reveal-pick { color: var(--text-dim); }
-.reveal-stake { color: var(--gold); font-weight: 700; }
+.reveal-stake { color: var(--accent); font-weight: 700; }
 
 /* ---------- Admin ---------- */
 .admin-item { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
@@ -363,7 +382,7 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 .admin-item .desc .t { font-weight: 700; font-size: 0.92rem; }
 .admin-item .desc .s { font-size: 0.78rem; color: var(--text-faint); margin-top: 2px; }
 .btn-small {
-  background: var(--felt); color: #fff; font-weight: 700; font-size: 0.8rem;
+  background: var(--pitch); color: #05130b; font-weight: 700; font-size: 0.8rem;
   padding: 8px 14px; border-radius: 999px;
 }
 .btn-small.outline { background: none; border: 1px solid var(--border); color: var(--text-dim); }
@@ -372,7 +391,7 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 .tabbar {
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 30;
   display: flex; justify-content: center;
-  background: rgba(14, 16, 19, 0.95);
+  background: rgba(11, 18, 16, 0.95);
   backdrop-filter: blur(10px);
   border-top: 1px solid var(--border);
 }
@@ -389,7 +408,7 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
   font-size: 0.65rem; font-weight: 700;
 }
 .tab .icon { font-size: 1.25rem; }
-.tab.active { color: var(--gold); }
+.tab.active { color: var(--pitch); }
 
 /* ---------- Login ---------- */
 .login {
@@ -398,13 +417,24 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
   padding: 32px 24px;
   text-align: center;
   background:
-    radial-gradient(ellipse at 50% -10%, rgba(29, 122, 79, 0.25), transparent 55%),
-    radial-gradient(ellipse at 50% 110%, rgba(240, 180, 41, 0.12), transparent 55%),
+    radial-gradient(ellipse at 50% -10%, rgba(47, 208, 110, 0.22), transparent 55%),
+    radial-gradient(ellipse at 50% 110%, rgba(245, 196, 81, 0.10), transparent 55%),
     var(--bg);
 }
 .login .big-logo { font-size: 4rem; margin-bottom: 12px; }
 .login h1 { font-size: 1.7rem; font-weight: 900; margin-bottom: 6px; }
-.login .tagline { color: var(--text-dim); font-size: 0.95rem; margin-bottom: 40px; max-width: 300px; }
+.login .tagline { color: var(--text-dim); font-size: 0.95rem; margin-bottom: 32px; max-width: 320px; }
+
+.login-card {
+  width: 100%; max-width: 340px;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px 18px;
+  margin-bottom: 28px; text-align: left;
+}
+.login-card .lc-title {
+  font-size: 0.72rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-faint); margin-bottom: 12px;
+}
 
 .btn-google {
   display: flex; align-items: center; justify-content: center; gap: 10px;
@@ -414,11 +444,11 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
   padding: 14px; border-radius: var(--radius-sm);
 }
 .btn-google .g { font-weight: 900; color: #4285f4; }
-.login .fine { margin-top: 24px; font-size: 0.72rem; color: var(--text-faint); max-width: 300px; }
+.login .fine { margin-top: 24px; font-size: 0.72rem; color: var(--text-faint); max-width: 320px; }
 .login .fine code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   background: var(--bg-elev); border: 1px solid var(--border);
-  border-radius: 5px; padding: 1px 5px; color: var(--gold); font-size: 0.9em;
+  border-radius: 5px; padding: 1px 5px; color: var(--pitch); font-size: 0.9em;
 }
 
 /* ---------- Voltar / navegação secundária ---------- */
@@ -432,7 +462,7 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 .toast {
   position: fixed; bottom: calc(var(--tabbar-h) + 18px); left: 50%;
   transform: translateX(-50%) translateY(20px);
-  background: var(--bg-elev); border: 1px solid var(--gold);
+  background: var(--bg-elev); border: 1px solid var(--pitch);
   color: var(--text); font-size: 0.88rem; font-weight: 600;
   padding: 12px 20px; border-radius: 999px;
   opacity: 0; pointer-events: none;
@@ -450,17 +480,17 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
   color: var(--text-dim); font-size: 0.8rem; font-weight: 700;
   padding: 7px 14px; border-radius: 999px;
 }
-.pill.active { background: var(--gold-soft); border-color: var(--gold); color: var(--gold); }
+.pill.active { background: var(--pitch-soft); border-color: var(--pitch); color: var(--pitch); }
 
 /* ---------- Aviso / callout ---------- */
 .callout {
   display: flex; gap: 10px; align-items: flex-start;
-  background: var(--felt-soft); border: 1px solid rgba(29, 122, 79, 0.4);
+  background: var(--pitch-soft); border: 1px solid var(--pitch-border);
   border-radius: var(--radius); padding: 12px 14px;
   font-size: 0.82rem; color: var(--text-dim);
   margin-bottom: 16px;
 }
-.callout.warn { background: rgba(240, 180, 41, 0.08); border-color: rgba(240, 180, 41, 0.35); }
+.callout.warn { background: var(--accent-soft); border-color: var(--accent-border); }
 .callout .ico { font-size: 1.1rem; }
 
 .empty {

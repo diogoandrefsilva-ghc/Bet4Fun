@@ -2,7 +2,7 @@
 
 Fonte de verdade do schema. **Edita aqui primeiro, depois aplica no Supabase** — nunca ao contrário.
 
-App-alvo: *O Casino da Malta* (Mundial 2026). Toda a lógica sensível vive em SQL — o cliente
+App-alvo: *Bet4Fun* (Mundial 2026). Toda a lógica sensível vive em SQL — o cliente
 nunca escreve saldos, nunca liquida mercados e nunca lê apostas alheias antes do apito.
 
 ## Schema dedicado
