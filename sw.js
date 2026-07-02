@@ -2,15 +2,20 @@
    No produto final, os dados vêm sempre da rede (Supabase);
    apenas o shell (HTML/CSS/JS/ícones) é servido do cache. */
 
-const CACHE = "casino-malta-v1";
+const CACHE = "casino-malta-v2";
 const SHELL = [
   "./",
   "./index.html",
   "./css/styles.css",
+  "./js/config.js",
+  "./js/supabase.js",
   "./js/data.js",
+  "./js/api.js",
   "./js/app.js",
   "./manifest.webmanifest",
   "./icons/icon.svg",
+  "./icons/icon-192.png",
+  "./icons/icon-512.png",
 ];
 
 self.addEventListener("install", (e) => {
@@ -29,6 +34,11 @@ self.addEventListener("activate", (e) => {
 
 self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET") return;
+  const url = new URL(e.request.url);
+  // Só o shell (mesma origem) é servido do cache. Tudo o que é
+  // cross-origin — Supabase (API/Auth) e o esm.sh do supabase-js —
+  // vai sempre à rede, nunca é cacheado (SPECS §8).
+  if (url.origin !== self.location.origin) return;
   e.respondWith(
     caches.match(e.request).then((hit) => hit || fetch(e.request))
   );

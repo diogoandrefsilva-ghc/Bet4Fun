@@ -415,6 +415,11 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 }
 .btn-google .g { font-weight: 900; color: #4285f4; }
 .login .fine { margin-top: 24px; font-size: 0.72rem; color: var(--text-faint); max-width: 300px; }
+.login .fine code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: var(--bg-elev); border: 1px solid var(--border);
+  border-radius: 5px; padding: 1px 5px; color: var(--gold); font-size: 0.9em;
+}
 
 /* ---------- Voltar / navegação secundária ---------- */
 .back-btn {
