@@ -387,6 +387,26 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 }
 .btn-small.outline { background: none; border: 1px solid var(--border); color: var(--text-dim); }
 
+/* ---------- Formulários (admin) ---------- */
+.field-label {
+  display: block;
+  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.05em;
+  text-transform: uppercase; color: var(--text-faint);
+  margin: 4px 0 6px;
+}
+.field {
+  width: 100%;
+  padding: 12px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font: inherit;
+  margin-bottom: 12px;
+  color-scheme: dark;
+}
+.field:focus { outline: none; border-color: var(--pitch); }
+
 /* ---------- Tab bar ---------- */
 .tabbar {
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 30;

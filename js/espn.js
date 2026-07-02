@@ -220,6 +220,7 @@ export function computeSettlement(game, markets, teamAPt, teamBPt) {
     if (name.startsWith("Resultado (1X2)")) label = sA > sB ? teamAPt : sB > sA ? teamBPt : "Empate";
     else if (name.startsWith("Mais/Menos")) label = (sA + sB) > 2 ? "Mais 2.5" : "Menos 2.5";
     else if (name.startsWith("Resultado exato")) { const s = `${sA}-${sB}`; label = findOpt(mk, s) ? s : "Outro"; }
+    else if (name.startsWith("Ambas marcam")) label = (sA > 0 && sB > 0) ? "Sim" : "Não";
 
     if (label) {
       const opt = findOpt(mk, label);

@@ -435,6 +435,51 @@ const liveAPI = {
     if (error) throwErr(error, "Falha ao anular o mercado");
     return { ok: true };
   },
+  // Formulário de edição de um jogo (admin): dados do jogo + mercados com pote
+  async getEditForm(matchId) {
+    const { data: m, error } = await supabase
+      .from("matches").select("*").eq("id", matchId).maybeSingle();
+    if (error || !m) throwErr(error, "Jogo não encontrado");
+    const { data: markets } = await supabase
+      .from("markets")
+      .select("id,name,risk,status,market_options(id)")
+      .eq("match_id", matchId).order("id", { ascending: true });
+    const ids = (markets || []).map((mk) => mk.id);
+    const { data: totals } = ids.length
+      ? await supabase.from("market_totals").select("*").in("market_id", ids)
+      : { data: [] };
+    const totMap = {}; (totals || []).forEach((t) => { totMap[t.market_id] = t.pot; });
+    return {
+      match: {
+        id: String(m.id), stage: m.stage,
+        teamA: m.team_a, flagA: m.flag_a || "", teamB: m.team_b, flagB: m.flag_b || "",
+        kickoffAt: m.kickoff_at, status: displayStatus(m),
+      },
+      markets: (markets || []).map((mk) => ({
+        id: String(mk.id), name: mk.name, risk: mk.risk, status: mk.status,
+        pot: totMap[mk.id] || 0, nOptions: (mk.market_options || []).length,
+      })),
+    };
+  },
+  async updateMatch(matchId, stage, kickoffAt) {
+    const { error } = await supabase.rpc("update_match", {
+      p_match_id: Number(matchId), p_stage: stage || null, p_kickoff_at: kickoffAt || null,
+    });
+    if (error) throwErr(error, "Falha ao atualizar o jogo");
+    return { ok: true };
+  },
+  async addMarket(matchId, name, risk, options) {
+    const { error } = await supabase.rpc("add_market", {
+      p_match_id: Number(matchId), p_name: name, p_risk: risk, p_options: options,
+    });
+    if (error) throwErr(error, "Falha ao adicionar o mercado");
+    return { ok: true };
+  },
+  async removeMarket(marketId) {
+    const { error } = await supabase.rpc("remove_market", { p_market_id: Number(marketId) });
+    if (error) throwErr(error, "Falha ao remover o mercado");
+    return { ok: true };
+  },
   async createMatch(payload) {
     const { error } = await supabase.rpc("create_match_with_markets", {
       p_stage: payload.stage,

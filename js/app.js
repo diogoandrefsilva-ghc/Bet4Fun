@@ -31,6 +31,7 @@ const routes = {
   admin: renderAdmin,
   settle: renderSettle,
   criar: renderCriarJogo,
+  editar: renderEditarJogo,
   espn: renderEspn,
 };
 
@@ -61,7 +62,7 @@ function updateTabs(route) {
   const map = {
     jogos: "jogos", jogo: "jogos", apostas: "apostas",
     classificacao: "classificacao", perfil: "perfil",
-    admin: "perfil", settle: "perfil", criar: "perfil", espn: "perfil",
+    admin: "perfil", settle: "perfil", criar: "perfil", editar: "perfil", espn: "perfil",
   };
   document.querySelectorAll(".tab").forEach((t) => {
     t.classList.toggle("active", t.dataset.tab === (map[route] || "jogos"));
@@ -518,9 +519,10 @@ async function doBailout() {
 async function renderAdmin() {
   if (!state.profile?.isAdmin) { location.hash = "#/perfil"; return; }
   shell(loadingScreen());
-  const [pending, bailouts, toSettle] = await Promise.all([
-    API.getPendingPlayers(), API.getBailouts(), API.getMatchesToSettle(),
+  const [pending, bailouts, toSettle, matches] = await Promise.all([
+    API.getPendingPlayers(), API.getBailouts(), API.getMatchesToSettle(), API.getMatches(),
   ]);
+  const editable = matches.filter((m) => m.status !== "done");
 
   shell(`
     <button class="back-btn" onclick="location.hash='#/perfil'">← Perfil</button>
@@ -549,6 +551,16 @@ async function renderAdmin() {
         <div class="desc"><div class="t">${escapeHtml(s.match)}</div><div class="s">${escapeHtml(s.detail)}</div></div>
         <button class="btn-small outline" onclick="location.hash='#/settle/${s.id}'">Liquidar</button>
       </div>`).join("") : `<div class="empty" style="padding:20px"><span class="ico">🧾</span>Nada por liquidar.</div>`}
+
+    <div class="section-label">Editar jogos e mercados</div>
+    ${editable.length ? editable.map((m) => `
+      <div class="card admin-item">
+        <div class="desc">
+          <div class="t">${m.flagA} ${escapeHtml(m.teamA)} vs ${escapeHtml(m.teamB)} ${m.flagB}</div>
+          <div class="s">${m.kickoff}${m.status === "live" ? " · a decorrer" : ""}</div>
+        </div>
+        <button class="btn-small outline" onclick="location.hash='#/editar/${m.id}'">Editar</button>
+      </div>`).join("") : `<div class="empty" style="padding:20px"><span class="ico">📅</span>Sem jogos por editar.</div>`}
 
     <div class="section-label">Gestão</div>
     <div class="card admin-item">
@@ -681,6 +693,119 @@ async function submitCreateMatch() {
     await API.createMatch(payload);
     toast("Jogo criado 🎉");
     location.hash = "#/admin";
+  } catch (e) { toast(`❌ ${e.message}`); }
+}
+
+/* ---------- Ecrã: Editar jogo + mercados (admin) ---------- */
+
+// Catálogo de mercados que o admin pode abrir num jogo. As opções são
+// geradas com os nomes das equipas quando fizer sentido.
+const MARKET_CATALOG = [
+  { name: "Resultado (1X2)", risk: "low", options: (a, b) => [a, "Empate", b] },
+  { name: "Mais/Menos 2.5 golos", risk: "low", options: () => ["Mais 2.5", "Menos 2.5"] },
+  { name: "Ambas marcam", risk: "low", options: () => ["Sim", "Não"] },
+  { name: "1.ª equipa a marcar", risk: "mid", options: (a, b) => [a, b, "Sem golos"] },
+  { name: "Cartão vermelho no jogo", risk: "mid", options: () => ["Sim", "Não"] },
+  { name: "Resultado exato", risk: "high", options: () => [
+    "0-0","1-0","0-1","1-1","2-0","0-2","2-1","1-2",
+    "2-2","3-0","0-3","3-1","1-3","3-2","2-3","3-3","Outro"] },
+  { name: "Decisão por penáltis", risk: "high", options: () => ["Sim", "Não"] },
+];
+
+function toLocalInput(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return "";
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+async function renderEditarJogo(matchId) {
+  if (!state.profile?.isAdmin) { location.hash = "#/perfil"; return; }
+  shell(loadingScreen());
+  const { match, markets } = await API.getEditForm(matchId);
+
+  const have = new Set(markets.map((mk) => mk.name));
+  const missing = MARKET_CATALOG.filter((c) => !have.has(c.name));
+
+  const marketRow = (mk) => `
+    <div class="card admin-item">
+      <span class="risk-dot ${RISK[mk.risk]?.cls || "risk-mid-bg"}" style="flex-shrink:0"></span>
+      <div class="desc">
+        <div class="t">${escapeHtml(mk.name)}</div>
+        <div class="s">${mk.nOptions} opções · Pote 🪙 ${mk.pot} · ${settleStatusLabel(mk.status)}</div>
+      </div>
+      ${mk.status === "settled" ? "" : `
+        <button class="btn-small outline" style="border-color:rgba(240,86,74,0.4);color:var(--risk-high)"
+          onclick="adminRemoveMarket('${escapeAttr(match.id)}','${escapeAttr(mk.id)}',${mk.pot},'${escapeAttr(mk.name)}')">Remover</button>`}
+    </div>`;
+
+  shell(`
+    <button class="back-btn" onclick="location.hash='#/admin'">← Admin</button>
+    <h1 class="page-title">Editar jogo</h1>
+    <p class="page-sub">${match.flagA} ${escapeHtml(match.teamA)} vs ${escapeHtml(match.teamB)} ${match.flagB}</p>
+
+    ${match.status !== "open" ? `
+      <div class="callout warn"><span class="ico">⚠️</span>
+        <span>Este jogo já começou. Mexer nos mercados agora devolve as fichas apostadas.</span></div>` : ""}
+
+    <div class="section-label">Dados do jogo</div>
+    <div class="card">
+      <label class="field-label" for="eStage">Fase</label>
+      <input id="eStage" class="field" value="${escapeHtml(match.stage)}" placeholder="Fase de grupos">
+      <label class="field-label" for="eKickoff">Data e hora do jogo (apostas fecham nesta hora)</label>
+      <input id="eKickoff" class="field" type="datetime-local" value="${toLocalInput(match.kickoffAt)}">
+      <button class="btn-primary" onclick="saveMatchEdit('${escapeAttr(match.id)}')">Guardar alterações</button>
+    </div>
+
+    <div class="section-label">Mercados deste jogo</div>
+    ${markets.length ? markets.map(marketRow).join("") : `<div class="empty" style="padding:20px"><span class="ico">🃏</span>Sem mercados. Adiciona em baixo.</div>`}
+
+    <div class="section-label">Adicionar mercado</div>
+    ${missing.length ? missing.map((c, i) => `
+      <div class="card admin-item">
+        <span class="risk-dot ${RISK[c.risk].cls}" style="flex-shrink:0"></span>
+        <div class="desc">
+          <div class="t">${escapeHtml(c.name)}</div>
+          <div class="s">${RISK[c.risk].name} · ${c.options(match.teamA, match.teamB).length} opções</div>
+        </div>
+        <button class="btn-small" onclick="adminAddMarket('${escapeAttr(match.id)}',${MARKET_CATALOG.indexOf(c)})">+ Abrir</button>
+      </div>`).join("") : `<div class="empty" style="padding:20px"><span class="ico">✅</span>Já tens todos os mercados do catálogo.</div>`}
+  `);
+}
+
+async function saveMatchEdit(matchId) {
+  const stage = $("#eStage").value.trim();
+  const kick = $("#eKickoff").value;
+  if (!kick) { toast("Preenche a data e hora."); return; }
+  const d = new Date(kick);
+  if (isNaN(d)) { toast("Data inválida."); return; }
+  try {
+    await API.updateMatch(matchId, stage, d.toISOString());
+    toast("Jogo atualizado 📅");
+    await renderEditarJogo(matchId);
+  } catch (e) { toast(`❌ ${e.message}`); }
+}
+
+async function adminAddMarket(matchId, catalogIdx) {
+  const c = MARKET_CATALOG[catalogIdx];
+  if (!c) return;
+  try {
+    const { match } = await API.getEditForm(matchId);
+    await API.addMarket(matchId, c.name, c.risk, c.options(match.teamA, match.teamB));
+    toast(`Mercado aberto: ${c.name} 🎯`);
+    await renderEditarJogo(matchId);
+  } catch (e) { toast(`❌ ${e.message}`); }
+}
+
+async function adminRemoveMarket(matchId, marketId, pot, name) {
+  const warn = pot > 0
+    ? `Remover "${name}"? Tem 🪙 ${pot} apostados — as fichas são devolvidas aos jogadores.`
+    : `Remover "${name}"?`;
+  if (!confirm(warn)) return;
+  try {
+    await API.removeMarket(marketId);
+    toast(`Mercado removido${pot > 0 ? " — fichas devolvidas ↩️" : ""}`);
+    await renderEditarJogo(matchId);
   } catch (e) { toast(`❌ ${e.message}`); }
 }
 
@@ -859,5 +984,6 @@ Object.assign(window, {
   approvePlayer, approveBailout,
   saveScore, pickWinner, voidMarket,
   submitCreateMatch,
+  saveMatchEdit, adminAddMarket, adminRemoveMarket,
   espnImportAll, espnSettle,
 });
