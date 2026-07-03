@@ -204,9 +204,9 @@ CREATE OR REPLACE VIEW bet4fun.match_pots AS
 CREATE OR REPLACE VIEW bet4fun.leaderboard AS
   SELECT p.id, p.display_name, p.avatar_emoji,
          (COALESCE(bal.chips, 0) + COALESCE(lk.locked, 0)) AS chips,
-         COALESCE(lk.locked, 0)                            AS locked,
          COALESCE(d.delta, 0)                              AS delta,
-         COALESCE(bg.codes, '{}'::text[])                  AS badge_codes
+         COALESCE(bg.codes, '{}'::text[])                  AS badge_codes,
+         COALESCE(lk.locked, 0)                            AS locked
   FROM bet4fun.profiles p
   LEFT JOIN bet4fun.balances bal ON bal.profile_id = p.id
   LEFT JOIN (
