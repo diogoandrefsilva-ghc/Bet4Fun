@@ -166,11 +166,17 @@ async function fetchJson(url) {
   } catch { return null; }
 }
 
-/* Vai ao ESPN buscar os eventos de hoje/ontem/amanhã + os dias dos nossos
-   jogos. Junta tudo, dedup por id mantendo o estado mais avançado. */
-export async function fetchEspnEvents(extraDatesMs = []) {
+/* Vai ao ESPN buscar os eventos de uma janela de dias (ontem → +forwardDays)
+   + os dias dos nossos jogos. Junta tudo, dedup por id mantendo o estado mais
+   avançado.
+
+   `forwardDays` controla quantos dias PARA A FRENTE se procura. Por defeito só
+   1 (ontem/hoje/amanhã) — chega para resultados ao vivo/liquidação e mantém o
+   fetch leve. O ecrã de importação passa uma janela larga para trazer também
+   os jogos ainda distantes (quartos, meias, final). */
+export async function fetchEspnEvents(extraDatesMs = [], forwardDays = 1) {
   const set = new Set();
-  for (const off of [-1, 0, 1]) set.add(ymd(Date.now() + off * 86400000));
+  for (let off = -1; off <= forwardDays; off++) set.add(ymd(Date.now() + off * 86400000));
   for (const ms of extraDatesMs) if (Number.isFinite(ms)) set.add(ymd(ms));
 
   const urls = [SCOREBOARD, ...[...set].map((d) => `${SCOREBOARD}?dates=${d}`)];
