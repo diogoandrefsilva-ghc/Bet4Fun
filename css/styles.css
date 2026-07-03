@@ -1,35 +1,43 @@
 /* ============================================================
    Bet4Fun — Mundial 2026
-   Tema: sportsbook escuro (relvado) — verde relva + acento coin
+   Tema: claro e fresco — relva verde + acento dourado (coin)
    Mobile-first; max-width container para desktop
    ============================================================ */
 
 :root {
-  --bg: #0b1210;
-  --bg-elev: #121a17;
-  --bg-card: #16211c;
-  --bg-card-hover: #1e2b24;
-  --border: #27352d;
-  --text: #e9f0ec;
-  --text-dim: #9db0a7;
-  --text-faint: #66776e;
+  /* superfícies (claras, sem preto) */
+  --bg: #e9edea;          /* página */
+  --bg-elev: #f1f5f2;     /* insets: botões, inputs, avatares */
+  --bg-card: #ffffff;     /* cartões */
+  --bg-card-hover: #f4f8f6;
+  --border: #dce4df;
+  --text: #16241d;
+  --text-dim: #566b60;
+  --text-faint: #8a9c93;
 
   /* verde relva — marca, ação, seleção, estado ativo */
-  --pitch: #2fd06e;
-  --pitch-soft: rgba(47, 208, 110, 0.14);
-  --pitch-border: rgba(47, 208, 110, 0.42);
+  --pitch: #0a9c57;
+  --pitch-soft: rgba(10, 156, 87, 0.12);
+  --pitch-border: rgba(10, 156, 87, 0.40);
 
-  /* âmbar coin — moeda (fichas / potes) e liderança */
-  --accent: #f5c451;
-  --accent-soft: rgba(245, 196, 81, 0.14);
-  --accent-border: rgba(245, 196, 81, 0.42);
+  /* dourado coin — moeda (fichas / potes) e liderança */
+  --accent: #bd8112;
+  --accent-soft: rgba(214, 148, 20, 0.16);
+  --accent-border: rgba(214, 148, 20, 0.42);
 
-  --risk-low: #34d17b;
-  --risk-mid: #f5c451;
-  --risk-high: #f0564a;
+  /* azul — "a tua aposta" (distingue-se de vencedor/líder, ambos verdes) */
+  --mine: #2f6bff;
+  --mine-soft: rgba(47, 107, 255, 0.12);
+  --mine-border: rgba(47, 107, 255, 0.42);
 
-  --win: #34d17b;
-  --loss: #f0564a;
+  --risk-low: #0a9c57;
+  --risk-mid: #d69412;
+  --risk-high: #e0483c;
+
+  --win: #0a9c57;
+  --loss: #e0483c;
+
+  --shadow-card: 0 1px 2px rgba(16, 36, 29, 0.04), 0 6px 18px rgba(16, 36, 29, 0.06);
 
   --radius: 14px;
   --radius-sm: 10px;
@@ -77,7 +85,7 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
   flex-shrink: 0; z-index: 20;
   display: flex; align-items: center; justify-content: space-between;
   padding: 12px 16px;
-  background: rgba(11, 18, 16, 0.92);
+  background: rgba(233, 237, 234, 0.88);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--border);
 }
@@ -133,19 +141,19 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 
 /* ---------- Cartões ---------- */
 .card {
-  background: linear-gradient(180deg, var(--bg-card), #131d18);
+  background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 14px;
   margin-bottom: 10px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.025);
+  box-shadow: var(--shadow-card);
 }
 
 .card.tappable { transition: background 0.15s, border-color 0.15s, transform 0.15s; }
 .card.tappable:active { transform: scale(0.985); }
 .card.tappable:active, .card.tappable:hover {
   background: var(--bg-card-hover);
-  border-color: #33453a;
+  border-color: var(--pitch-border);
 }
 
 /* ---------- Jogo (fixture) ---------- */
@@ -245,11 +253,11 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 .slip-inner {
   pointer-events: auto;
   width: 100%; max-width: 480px;
-  background: var(--bg-elev);
-  border-top: 1px solid var(--pitch);
+  background: var(--bg-card);
+  border-top: 2px solid var(--pitch);
   border-radius: 18px 18px 0 0;
   padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
-  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 -10px 30px rgba(16, 36, 29, 0.14);
 }
 .slip-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
 .slip-market { font-size: 0.82rem; color: var(--text-dim); }
@@ -363,10 +371,10 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 
 .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 6px; }
 .stat-tile {
-  background: linear-gradient(180deg, var(--bg-card), #131d18);
+  background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm); padding: 12px 8px; text-align: center;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+  box-shadow: var(--shadow-card);
 }
 .stat-tile .val { font-size: 1.15rem; font-weight: 800; }
 .stat-tile .lbl { font-size: 0.68rem; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 2px; }
@@ -443,13 +451,14 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
   color-scheme: dark;
 }
 .field:focus { outline: none; border-color: var(--pitch); }
+.field { color-scheme: light; }
 
 /* ---------- Tab bar (dock flutuante) ---------- */
 .tabbar {
   position: absolute; bottom: 0; left: 0; right: 0; z-index: 30;
   display: flex; justify-content: center;
   padding: 18px 14px calc(10px + env(safe-area-inset-bottom));
-  background: linear-gradient(to top, rgba(11, 18, 16, 0.95) 45%, rgba(11, 18, 16, 0));
+  background: linear-gradient(to top, rgba(233, 237, 234, 0.96) 45%, rgba(233, 237, 234, 0));
   pointer-events: none;
 }
 .tabbar-inner {
@@ -458,12 +467,12 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
   display: flex; gap: 4px;
   height: var(--tabbar-h);
   padding: 6px;
-  background: rgba(20, 29, 24, 0.9);
+  background: rgba(255, 255, 255, 0.9);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--border);
   border-radius: 22px;
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  box-shadow: 0 12px 30px rgba(16, 36, 29, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 .tab {
   flex: 1; position: relative;
@@ -493,8 +502,8 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
   padding: 32px 24px;
   text-align: center;
   background:
-    radial-gradient(ellipse at 50% -10%, rgba(47, 208, 110, 0.22), transparent 55%),
-    radial-gradient(ellipse at 50% 110%, rgba(245, 196, 81, 0.10), transparent 55%),
+    radial-gradient(ellipse at 50% -10%, rgba(10, 156, 87, 0.16), transparent 55%),
+    radial-gradient(ellipse at 50% 110%, rgba(214, 148, 20, 0.12), transparent 55%),
     var(--bg);
 }
 .login .big-logo { font-size: 4rem; margin-bottom: 12px; }
@@ -574,3 +583,60 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
   padding: 40px 20px;
 }
 .empty .ico { font-size: 2.2rem; display: block; margin-bottom: 8px; }
+
+.callout.live { background: rgba(224, 72, 60, 0.10); border-color: rgba(224, 72, 60, 0.35); }
+
+/* ---------- Opção: marcas (a tua / a ganhar / vencedora) ---------- */
+.option-btn .opt-tags {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 4px;
+  min-height: 0; margin-bottom: 1px;
+}
+.option-btn .opt-tags:empty { display: none; }
+.opt-tag {
+  font-size: 0.58rem; font-weight: 800; letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 2px 6px; border-radius: 999px; line-height: 1.1;
+}
+.tag-mine   { background: var(--mine-soft);   color: var(--mine); border: 1px solid var(--mine-border); }
+.tag-leader { background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent-border); }
+.tag-win    { background: var(--pitch-soft);  color: var(--pitch); border: 1px solid var(--pitch-border); }
+
+.option-btn.opt-mine   { border-color: var(--mine-border);  background: var(--mine-soft); }
+.option-btn.opt-mine   .opt-label { color: var(--mine); }
+.option-btn.opt-leader { border-color: var(--accent-border); box-shadow: 0 0 0 1px var(--accent-border) inset; }
+.option-btn.opt-winner { border-color: var(--pitch); background: var(--pitch-soft); }
+.option-btn.opt-winner .opt-label { color: var(--pitch); }
+.option-btn.is-dim { opacity: 0.5; }
+
+/* opção em modo revelação (tap para ver quem apostou) */
+.reveal-opt { cursor: pointer; }
+.reveal-opt.active { border-color: var(--text-dim); }
+
+/* painel que revela quem apostou numa opção */
+.reveal-panel { display: none; margin-top: 10px; }
+.reveal-panel.open { display: block; animation: fade-in 0.18s ease; }
+@keyframes fade-in { from { opacity: 0; transform: translateY(-3px); } }
+.reveal-line {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 4px; border-top: 1px solid var(--border);
+  font-size: 0.86rem;
+}
+.reveal-line:first-child { border-top: none; }
+.reveal-line .rl-who { flex: 1; font-weight: 700; }
+.reveal-line .rl-stake { color: var(--accent); font-weight: 800; }
+.reveal-empty { padding: 10px 4px; color: var(--text-faint); font-size: 0.84rem; text-align: center; }
+.lb-avatar.sm { width: 28px; height: 28px; font-size: 0.95rem; }
+
+/* rodapé de mercado bloqueado (já apostaste) */
+.market-locked-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
+  font-size: 0.8rem; color: var(--text-dim);
+}
+.market-locked-foot strong { color: var(--text); }
+.card.market.is-locked { border-color: var(--mine-border); }
+.link-btn {
+  color: var(--pitch); font-weight: 800; font-size: 0.8rem;
+  padding: 4px 8px; border-radius: 8px; flex-shrink: 0;
+}
+.link-btn:active { background: var(--pitch-soft); }

@@ -187,6 +187,7 @@ const liveAPI = {
   },
 
   async getMatchDetail(matchId) {
+    const uid = await this._requireUid();
     const { data: m, error } = await supabase
       .from("matches").select("*").eq("id", matchId).maybeSingle();
     if (error || !m) throwErr(error, "Jogo não encontrado");
@@ -203,7 +204,7 @@ const liveAPI = {
     // Mercados + opções + pools
     const { data: markets } = await supabase
       .from("markets")
-      .select("id,name,risk,closes_at,market_options(id,label,sort)")
+      .select("id,name,risk,status,winning_option_id,closes_at,market_options(id,label,sort)")
       .eq("match_id", matchId)
       .order("id", { ascending: true });
     const mkIds = (markets || []).map((mk) => mk.id);
@@ -217,33 +218,51 @@ const liveAPI = {
     const poolMap = {}; (pools || []).forEach((p) => { poolMap[`${p.market_id}:${p.option_id}`] = p.pool; });
     const totMap = {}; (totals || []).forEach((t) => { totMap[t.market_id] = t.pot; });
 
+    // A minha aposta em cada mercado (visível sempre — RLS deixa ver a própria)
+    const mineMap = {};
+    if (uid && mkIds.length) {
+      const { data: mine } = await supabase
+        .from("bets").select("market_id,option_id,stake")
+        .eq("profile_id", uid).in("market_id", mkIds);
+      (mine || []).forEach((b) => {
+        mineMap[b.market_id] = { optionId: String(b.option_id), stake: b.stake };
+      });
+    }
+
     const marketsOut = (markets || []).map((mk) => ({
       id: String(mk.id),
       risk: mk.risk,
       name: mk.name,
+      status: mk.status,
       pot: totMap[mk.id] || 0,
+      mine: mineMap[mk.id] || null,
+      winnerOptionId: mk.winning_option_id != null ? String(mk.winning_option_id) : null,
       options: (mk.market_options || [])
         .sort((a, b) => (a.sort || 0) - (b.sort || 0))
         .map((o) => ({ id: String(o.id), label: o.label, pool: poolMap[`${mk.id}:${o.id}`] || 0 })),
     }));
     match.pot = marketsOut.reduce((a, mk) => a + mk.pot, 0);
 
-    // Livro aberto (só depois do apito; a RLS garante 0 linhas antes)
-    let reveal = [];
+    // Livro aberto (só depois do apito; a RLS garante 0 linhas antes).
+    // Agrupado por opção: { "marketId:optionId": [ {who, avatar, stake}, ... ] }
+    const book = {};
     if (!open && mkIds.length) {
       const { data: bets } = await supabase
         .from("bets")
-        .select("stake,market_options(label),markets!inner(name,match_id),profiles(display_name,avatar_emoji)")
-        .eq("markets.match_id", matchId);
-      reveal = (bets || []).map((b) => ({
-        who: b.profiles?.display_name || "?",
-        avatar: b.profiles?.avatar_emoji || "⚽",
-        pick: `${b.markets?.name ?? ""} · ${b.market_options?.label ?? ""}`,
-        stake: b.stake,
-      }));
+        .select("stake,market_id,option_id,profiles(display_name,avatar_emoji)")
+        .in("market_id", mkIds);
+      (bets || []).forEach((b) => {
+        const key = `${b.market_id}:${b.option_id}`;
+        (book[key] || (book[key] = [])).push({
+          who: b.profiles?.display_name || "?",
+          avatar: b.profiles?.avatar_emoji || "⚽",
+          stake: b.stake,
+        });
+      });
+      Object.values(book).forEach((arr) => arr.sort((x, y) => y.stake - x.stake));
     }
 
-    return { match, open, markets: marketsOut, reveal };
+    return { match, open, markets: marketsOut, book };
   },
 
   /* ----- Apostar ----- */

@@ -8,7 +8,7 @@
 
 import { API } from "./api.js";
 import { IS_CONFIGURED } from "./config.js";
-import { fetchEspnEvents, computeSettlement, teamPt, teamFlag, pairKey } from "./espn.js";
+import { fetchEspnEvents, computeSettlement, computeLiveMarkers, teamPt, teamFlag, pairKey } from "./espn.js";
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -161,7 +161,7 @@ function shell(content) {
           <button class="tab" data-tab="jogos" onclick="location.hash='#/jogos'"><span class="icon">⚽</span>Jogos</button>
           <button class="tab" data-tab="apostas" onclick="location.hash='#/apostas'"><span class="icon">🎟️</span>Apostas</button>
           <button class="tab" data-tab="classificacao" onclick="location.hash='#/classificacao'"><span class="icon">🏆</span>Classificação</button>
-          <button class="tab" data-tab="perfil" onclick="location.hash='#/perfil'"><span class="icon">😎</span>Perfil</button>
+          <button class="tab" data-tab="perfil" onclick="location.hash='#/perfil'"><span class="icon">👤</span>Perfil</button>
         </div>
       </nav>
       <div class="slip" id="slip"></div>
@@ -187,7 +187,7 @@ function matchCard(m) {
       <div class="match-meta"><span class="match-stage">${escapeHtml(m.stage)}</span>${statusTag}</div>
       <div class="match-teams">
         <div class="match-team"><span class="flag">${m.flagA}</span><span class="name">${escapeHtml(m.teamA)}</span></div>
-        <div class="match-mid">${mid}</div>
+        <div class="match-mid" id="mid-${m.id}">${mid}</div>
         <div class="match-team"><span class="flag">${m.flagB}</span><span class="name">${escapeHtml(m.teamB)}</span></div>
       </div>
       <div class="match-foot">
@@ -226,6 +226,46 @@ async function renderJogos() {
 
     ${done.length ? `<div class="section-label">Terminados</div>${done.map(matchCard).join("")}` : ""}
   `);
+
+  if (live.length) patchListLiveScores(live);
+}
+
+/* ---------- Resultado ao vivo (ESPN) ---------- */
+
+// cache curto para não martelar o ESPN entre lista e detalhe
+let _espnCache = { at: 0, games: null };
+async function espnGames() {
+  if (_espnCache.games && Date.now() - _espnCache.at < 60000) return _espnCache.games;
+  const games = await fetchEspnEvents([]);
+  _espnCache = { at: Date.now(), games };
+  return games;
+}
+
+function findEspnGame(games, teamA, teamB) {
+  const key = pairKey(teamA, teamB);
+  return (games || []).find((g) => pairKey(teamPt(g.teamAEn), teamPt(g.teamBEn)) === key) || null;
+}
+
+// score do ESPN orientado às nossas equipas (PT)
+function espnScoreFor(g, teamA, teamB) {
+  if (g.scoreA == null || g.scoreB == null) return null;
+  const pt = {};
+  pt[teamPt(g.teamAEn)] = g.scoreA;
+  pt[teamPt(g.teamBEn)] = g.scoreB;
+  const a = pt[teamA], b = pt[teamB];
+  return (a == null || b == null) ? null : { a, b };
+}
+
+async function patchListLiveScores(liveMatches) {
+  let games;
+  try { games = await espnGames(); } catch { return; }
+  liveMatches.forEach((m) => {
+    const g = findEspnGame(games, m.teamA, m.teamB);
+    const sc = g && espnScoreFor(g, m.teamA, m.teamB);
+    if (!sc) return;
+    const mid = document.getElementById(`mid-${m.id}`);
+    if (mid) mid.innerHTML = `<span class="score">${sc.a} – ${sc.b}</span><span class="time">Ao vivo</span>`;
+  });
 }
 
 /* ---------- Ecrã: Detalhe do jogo + mercados ---------- */
@@ -236,67 +276,186 @@ const RISK = {
   high: { name: "Risco alto", sub: "O jackpot", cls: "risk-high-bg" },
 };
 
-async function renderJogoDetalhe(matchId) {
+async function renderJogoDetalhe(matchId, opts = {}) {
+  if (!opts.keepUnlock) state.detailUnlocked = new Set();
   shell(loadingScreen());
   const detail = await API.getMatchDetail(matchId);
   state.detail = detail;
   const m = detail.match;
+  // open = apostas abertas · live = livro aberto (a decorrer) · done = terminado
+  const phase = detail.open ? "open" : (m.status === "done" ? "done" : "live");
 
-  let body;
-  if (detail.open) {
-    const groups = ["low", "mid", "high"].map((risk) => {
-      const list = detail.markets.filter((mk) => mk.risk === risk);
-      if (!list.length) return "";
-      return `
-        <div class="market-group">
-          <div class="risk-header">
-            <span class="risk-dot ${RISK[risk].cls}"></span>
-            <span class="risk-name">${RISK[risk].name}</span>
-            <span class="risk-sub">· ${RISK[risk].sub}</span>
-          </div>
-          ${list.map((mk) => `
-            <div class="card market">
-              <div class="market-title-row">
-                <span class="market-title">${escapeHtml(mk.name)}</span>
-                <span class="market-pot">Pote 🪙 ${mk.pot}</span>
-              </div>
-              <div class="options ${mk.options.length === 2 ? "cols-2" : ""}">
-                ${mk.options.map((o) => `
-                  <button class="option-btn" data-opt="${o.id}" onclick="openSlip('${mk.id}','${o.id}', this)">
-                    <span class="opt-label">${escapeHtml(o.label)}</span>
-                    <span class="opt-pool">🪙 ${o.pool} no pote</span>
-                  </button>`).join("")}
-              </div>
-            </div>`).join("")}
-        </div>`;
-    }).join("");
+  const groups = ["low", "mid", "high"].map((risk) => {
+    const list = detail.markets.filter((mk) => mk.risk === risk);
+    if (!list.length) return "";
+    return `
+      <div class="market-group">
+        <div class="risk-header">
+          <span class="risk-dot ${RISK[risk].cls}"></span>
+          <span class="risk-name">${RISK[risk].name}</span>
+          <span class="risk-sub">· ${RISK[risk].sub}</span>
+        </div>
+        ${list.map((mk) => marketCardHtml(mk, phase)).join("")}
+      </div>`;
+  }).join("");
 
-    body = `
+  const banner =
+    phase === "open" ? `
       <div class="callout"><span class="ico">🤫</span>
         <span>As apostas são <strong>secretas</strong> até ao apito inicial. Depois o livro abre e toda a malta vê onde puseste as fichas.</span>
-      </div>
-      ${detail.markets.length ? groups : `<div class="empty"><span class="ico">🃏</span>Sem mercados para este jogo.</div>`}`;
-  } else {
-    body = `
+      </div>` :
+    phase === "live" ? `
+      <div id="live-banner"></div>
       <div class="callout warn"><span class="ico">📖</span>
-        <span><strong>Livro aberto!</strong> O jogo começou — apostas reveladas. Que comece a picardia.</span>
-      </div>
-      <div class="card">
-        ${detail.reveal.length ? detail.reveal.map((r) => `
-          <div class="reveal-row">
-            <span class="lb-avatar" style="width:32px;height:32px;font-size:1rem">${r.avatar}</span>
-            <span class="reveal-who">${escapeHtml(r.who)}</span>
-            <span class="reveal-pick">${escapeHtml(r.pick)}</span>
-            <span class="reveal-stake">🪙 ${r.stake}</span>
-          </div>`).join("") : `<div class="empty"><span class="ico">🦗</span>Ninguém apostou neste jogo.</div>`}
+        <span><strong>Livro aberto!</strong> O jogo começou. Toca em cada opção para ver <strong>quem lá pôs fichas</strong>.</span>
+      </div>` : `
+      <div class="callout"><span class="ico">🏁</span>
+        <span><strong>Jogo terminado.</strong> Toca numa opção para ver quem apostou. A marca <strong>✓ certa</strong> assinala a opção vencedora.</span>
       </div>`;
-  }
 
   shell(`
     <button class="back-btn" onclick="location.hash='#/jogos'">← Jogos</button>
     ${matchCard(m)}
-    ${body}
+    ${banner}
+    ${detail.markets.length ? groups : `<div class="empty"><span class="ico">🃏</span>Sem mercados para este jogo.</div>`}
   `);
+
+  if (phase === "live") patchLive(m);
+}
+
+/* Um cartão de mercado. Comportamento depende da fase:
+   - open  : botões para apostar (ou bloqueado se já apostei)
+   - live  : opções em modo revelação (tap → quem apostou) + marca "a ganhar"
+   - done  : idem, com a opção vencedora marcada */
+function marketCardHtml(mk, phase) {
+  if (phase === "open") {
+    const locked = mk.mine && !state.detailUnlocked.has(String(mk.id));
+    return `
+      <div class="card market ${locked ? "is-locked" : ""}">
+        <div class="market-title-row">
+          <span class="market-title">${escapeHtml(mk.name)}</span>
+          <span class="market-pot">Pote 🪙 ${mk.pot}</span>
+        </div>
+        <div class="options ${mk.options.length === 2 ? "cols-2" : ""}">
+          ${mk.options.map((o) => {
+            const isMine = mk.mine && String(mk.mine.optionId) === String(o.id);
+            if (locked) {
+              return `
+                <div class="option-btn ${isMine ? "opt-mine" : "is-dim"}">
+                  ${isMine ? `<span class="opt-tags"><span class="opt-tag tag-mine">a tua</span></span>` : ""}
+                  <span class="opt-label">${escapeHtml(o.label)}</span>
+                  <span class="opt-pool">🪙 ${o.pool} no pote</span>
+                </div>`;
+            }
+            return `
+              <button class="option-btn ${isMine ? "selected" : ""}" data-opt="${o.id}" onclick="openSlip('${mk.id}','${o.id}', this)">
+                <span class="opt-label">${escapeHtml(o.label)}</span>
+                <span class="opt-pool">🪙 ${o.pool} no pote</span>
+              </button>`;
+          }).join("")}
+        </div>
+        ${locked ? `
+          <div class="market-locked-foot">
+            <span>🎯 Apostaste <strong>🪙 ${mk.mine.stake}</strong> · palpite trancado</span>
+            <button class="link-btn" onclick="trocarPalpite('${mk.id}')">Trocar</button>
+          </div>` : ""}
+      </div>`;
+  }
+
+  // fases live / done → modo revelação
+  return `
+    <div class="card market">
+      <div class="market-title-row">
+        <span class="market-title">${escapeHtml(mk.name)}</span>
+        <span class="market-pot">Pote 🪙 ${mk.pot}</span>
+      </div>
+      <div class="options ${mk.options.length === 2 ? "cols-2" : ""}">
+        ${mk.options.map((o) => {
+          const isMine = mk.mine && String(mk.mine.optionId) === String(o.id);
+          const isWinner = phase === "done" && String(mk.winnerOptionId ?? "") === String(o.id);
+          const n = ((state.detail.book || {})[`${mk.id}:${o.id}`] || []).length;
+          const cls = [isMine && "opt-mine", isWinner && "opt-winner"].filter(Boolean).join(" ");
+          return `
+            <button class="option-btn reveal-opt ${cls}" data-mk="${mk.id}" data-opt="${o.id}"
+              onclick="toggleReveal('${mk.id}','${o.id}', this)">
+              <span class="opt-tags">
+                ${isWinner ? `<span class="opt-tag tag-win">✓ certa</span>` : ""}
+                ${isMine ? `<span class="opt-tag tag-mine">a tua</span>` : ""}
+              </span>
+              <span class="opt-label">${escapeHtml(o.label)}</span>
+              <span class="opt-pool">🪙 ${o.pool} · ${n} 👤</span>
+            </button>`;
+        }).join("")}
+      </div>
+      <div class="reveal-panel" id="reveal-${mk.id}"></div>
+    </div>`;
+}
+
+/* Revela quem apostou numa opção (livro aberto). Toggle: 2.º toque fecha. */
+function toggleReveal(marketId, optionId, btn) {
+  const panel = document.getElementById(`reveal-${marketId}`);
+  if (!panel) return;
+  const card = panel.closest(".card");
+  const list = ((state.detail.book || {})[`${marketId}:${optionId}`]) || [];
+  const isOpenSame = panel.classList.contains("open") && panel.dataset.opt === String(optionId);
+
+  card.querySelectorAll(".reveal-opt.active").forEach((b) => b.classList.remove("active"));
+  if (isOpenSame) {
+    panel.classList.remove("open");
+    panel.dataset.opt = "";
+    panel.innerHTML = "";
+    return;
+  }
+  if (btn) btn.classList.add("active");
+  panel.dataset.opt = String(optionId);
+  panel.innerHTML = list.length
+    ? list.map((r) => `
+        <div class="reveal-line">
+          <span class="lb-avatar sm">${r.avatar}</span>
+          <span class="rl-who">${escapeHtml(r.who)}</span>
+          <span class="rl-stake">🪙 ${r.stake}</span>
+        </div>`).join("")
+    : `<div class="reveal-empty">Ninguém apostou nesta opção 🦗</div>`;
+  panel.classList.add("open");
+}
+
+/* Desbloqueia um mercado já apostado para trocar o palpite (antes do apito). */
+function trocarPalpite(marketId) {
+  state.detailUnlocked.add(String(marketId));
+  renderJogoDetalhe(state.detail.match.id, { keepUnlock: true });
+}
+
+/* Vai ao ESPN buscar o resultado ao vivo deste jogo e marca, em cada mercado,
+   a opção que iria pagar face ao resultado atual. Progressivo: corre depois
+   do render e injeta no DOM (nunca bloqueia o ecrã). */
+async function patchLive(m) {
+  let live = null;
+  try {
+    const games = await espnGames();
+    const g = findEspnGame(games, m.teamA, m.teamB);
+    if (g) live = computeLiveMarkers(g, state.detail.markets, m.teamA, m.teamB);
+  } catch { /* ESPN em baixo/bloqueado — segue sem resultado ao vivo */ }
+  if (!live) return;
+
+  if (live.score) {
+    const mid = document.getElementById(`mid-${m.id}`);
+    if (mid) mid.innerHTML = `<span class="score">${live.score.a} – ${live.score.b}</span><span class="time">Ao vivo</span>`;
+    const banner = document.getElementById("live-banner");
+    if (banner) {
+      banner.innerHTML = `
+        <div class="callout live"><span class="ico">🔴</span>
+          <span>Resultado <strong>ao vivo</strong> (ESPN): <strong>${escapeHtml(m.teamA)} ${live.score.a}–${live.score.b} ${escapeHtml(m.teamB)}</strong>. A marca <strong>a ganhar</strong> mostra a opção vencedora face ao resultado atual.</span>
+        </div>`;
+    }
+  }
+
+  Object.entries(live.leaders || {}).forEach(([mkId, optId]) => {
+    const btn = document.querySelector(`.reveal-opt[data-mk="${mkId}"][data-opt="${optId}"]`);
+    if (!btn || btn.querySelector(".tag-leader")) return;
+    btn.classList.add("opt-leader");
+    const tags = btn.querySelector(".opt-tags");
+    if (tags) tags.insertAdjacentHTML("afterbegin", `<span class="opt-tag tag-leader">a ganhar</span>`);
+  });
 }
 
 /* ---------- Boletim (bet slip) ---------- */
@@ -999,6 +1158,7 @@ if ("serviceWorker" in navigator) {
 Object.assign(window, {
   doLogin, doLogout, refreshPending,
   openSlip, closeSlip, setStake, confirmBet,
+  toggleReveal, trocarPalpite,
   doBailout,
   approvePlayer, approveBailout,
   saveScore, pickWinner, voidMarket,
