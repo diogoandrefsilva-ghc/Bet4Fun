@@ -43,6 +43,7 @@ INSERT INTO bet4fun.settings (key, value) VALUES
   ('bailout_chips',             '200'::jsonb),
   ('min_stake',                 '5'::jsonb),
   ('min_match_stake',           '100'::jsonb),   -- aposta mínima obrigatória por jogo (o resto expira; 0 desliga)
+  ('default_markets',           '["Resultado (1X2)","Mais/Menos 2.5 golos","Resultado exato","Decisão por penáltis"]'::jsonb),  -- mercados abertos em cada jogo novo (nomes do catálogo; penáltis só nos jogos a eliminar)
   ('show_pools_before_kickoff', 'true'::jsonb),
   ('admin_email',               '"diogo.andre.f.silva@gmail.com"'::jsonb)   -- <<< TROCA se preciso
 ON CONFLICT (key) DO NOTHING;

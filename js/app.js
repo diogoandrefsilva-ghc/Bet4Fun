@@ -32,6 +32,7 @@ const routes = {
   settle: renderSettle,
   criar: renderCriarJogo,
   editar: renderEditarJogo,
+  mercados: renderMercadosDefeito,
   espn: renderEspn,
 };
 
@@ -63,7 +64,7 @@ function updateTabs(route) {
   const map = {
     jogos: "jogos", jogo: "jogos", apostas: "apostas",
     classificacao: "classificacao", perfil: "perfil",
-    admin: "perfil", settle: "perfil", criar: "perfil", editar: "perfil", espn: "perfil",
+    admin: "perfil", settle: "perfil", criar: "perfil", editar: "perfil", mercados: "perfil", espn: "perfil",
   };
   document.querySelectorAll(".tab").forEach((t) => {
     t.classList.toggle("active", t.dataset.tab === (map[route] || "jogos"));
@@ -837,8 +838,12 @@ async function renderAdmin() {
       <button class="btn-small" onclick="location.hash='#/espn'">Abrir</button>
     </div>
     <div class="card admin-item">
-      <div class="desc"><div class="t">Criar jogo à mão</div><div class="s">Cria um jogo com os mercados enxutos (1X2, Mais/Menos, Resultado exato)</div></div>
+      <div class="desc"><div class="t">Criar jogo à mão</div><div class="s">Cria um jogo com os mercados por defeito</div></div>
       <button class="btn-small outline" onclick="location.hash='#/criar'">Criar</button>
+    </div>
+    <div class="card admin-item">
+      <div class="desc"><div class="t">🃏 Mercados por defeito</div><div class="s">Escolhe os mercados que abrem em cada jogo novo</div></div>
+      <button class="btn-small outline" onclick="location.hash='#/mercados'">Configurar</button>
     </div>
   `);
 }
@@ -930,7 +935,7 @@ async function renderCriarJogo() {
   shell(`
     <button class="back-btn" onclick="location.hash='#/admin'">← Admin</button>
     <h1 class="page-title">Criar jogo</h1>
-    <p class="page-sub">Abre só os mercados essenciais: 1X2, Mais/Menos 2.5 e Resultado exato</p>
+    <p class="page-sub">Abre automaticamente os mercados por defeito (configuráveis no admin)</p>
     <div class="card">
       ${inp("nStage", "Fase (ex: Fase de grupos)", "Fase de grupos")}
       <div style="display:flex;gap:10px">
@@ -978,7 +983,7 @@ const MARKET_CATALOG = [
   { name: "Resultado exato", risk: "high", options: () => [
     "0-0","1-0","0-1","1-1","2-0","0-2","2-1","1-2",
     "2-2","3-0","0-3","3-1","1-3","3-2","2-3","3-3","Outro"] },
-  { name: "Decisão por penáltis", risk: "high", options: () => ["Sim", "Não"] },
+  { name: "Decisão por penáltis", risk: "high", options: () => ["Sim", "Não"], knockoutOnly: true },
 ];
 
 function toLocalInput(iso) {
@@ -1096,6 +1101,60 @@ async function adminRemoveMarket(matchId, marketId, pot, name) {
   } catch (e) { toast(`❌ ${e.message}`); }
 }
 
+/* ---------- Ecrã: Mercados por defeito (admin) ---------- */
+
+// Config do conjunto de mercados que abre automaticamente em cada jogo novo
+// (criado à mão ou importado do ESPN). O catálogo real vive no SQL
+// (bet4fun.market_catalog); o MARKET_CATALOG daqui serve só para desenhar.
+async function renderMercadosDefeito() {
+  if (!state.profile?.isAdmin) { location.hash = "#/perfil"; return; }
+  shell(loadingScreen());
+  const chosen = new Set(await API.getDefaultMarkets());
+
+  shell(`
+    <button class="back-btn" onclick="location.hash='#/admin'">← Admin</button>
+    <h1 class="page-title">🃏 Mercados por defeito</h1>
+    <p class="page-sub">Estes mercados abrem automaticamente em cada jogo novo — criado à mão ou importado do ESPN</p>
+
+    <div class="card">
+      ${MARKET_CATALOG.map((c) => `
+        <label class="admin-item" style="cursor:pointer;padding:8px 0">
+          <input type="checkbox" class="dm-check" style="width:18px;height:18px;accent-color:var(--pitch);flex-shrink:0" data-name="${escapeHtml(c.name)}" ${chosen.has(c.name) ? "checked" : ""}>
+          <span class="risk-dot ${RISK[c.risk].cls}" style="flex-shrink:0"></span>
+          <div class="desc">
+            <div class="t">${escapeHtml(c.name)}</div>
+            <div class="s">${RISK[c.risk].name} · ${c.options("Equipa A", "Equipa B").length} opções${c.knockoutOnly ? " · só nos jogos a eliminar" : ""}</div>
+          </div>
+        </label>`).join("")}
+      <button class="btn-primary" style="margin-top:12px" onclick="saveDefaultMarkets()">Guardar configuração</button>
+    </div>
+
+    <div class="section-label">Jogos existentes</div>
+    <div class="card">
+      <p style="font-size:0.85rem;color:var(--text-dim);margin-bottom:12px">
+        Abre os mercados em falta nos jogos que ainda não começaram. Não remove
+        nenhum mercado já aberto — isso faz-se jogo a jogo em "Editar", porque
+        devolve as fichas apostadas.
+      </p>
+      <button class="btn-secondary" onclick="applyDefaultMarkets()">Aplicar aos jogos existentes</button>
+    </div>
+  `);
+}
+
+async function saveDefaultMarkets() {
+  const names = [...document.querySelectorAll(".dm-check:checked")].map((c) => c.dataset.name);
+  if (!names.length) { toast("Escolhe pelo menos um mercado."); return; }
+  try { await API.setDefaultMarkets(names); toast("Mercados por defeito guardados 🃏"); }
+  catch (e) { toast(`❌ ${e.message}`); }
+}
+
+async function applyDefaultMarkets() {
+  try {
+    const n = await API.applyDefaultMarkets();
+    toast(n > 0 ? `Abertos ${n} mercado(s) nos jogos existentes 🎯` : "Nada para abrir — os jogos já têm estes mercados ✅");
+  } catch (e) { toast(`❌ ${e.message}`); }
+}
+
 /* ---------- Ecrã: Importar/Liquidar via ESPN (admin) ---------- */
 
 async function renderEspn() {
@@ -1136,7 +1195,7 @@ async function renderEspn() {
     <div class="section-label">Importar jogos previstos</div>
     ${upcoming.length ? `
       <div class="callout"><span class="ico">📥</span>
-        <span>${upcoming.length} jogo(s) do ESPN ainda não estão cá. Cria-os com os mercados enxutos (penáltis nos de eliminar).</span></div>
+        <span>${upcoming.length} jogo(s) do ESPN ainda não estão cá. Cria-os com os mercados por defeito (configuráveis no admin).</span></div>
       <button class="btn-primary" style="margin-bottom:12px" onclick="espnImportAll()">Importar ${upcoming.length} jogo(s)</button>
       ${upcoming.map((g) => `
         <div class="card admin-item">
@@ -1324,5 +1383,6 @@ Object.assign(window, {
   saveScore, pickWinner, voidMarket,
   submitCreateMatch,
   saveMatchEdit, adminAddMarket, adminRemoveMarket, adminRemoveMatch,
+  saveDefaultMarkets, applyDefaultMarkets,
   espnImportAll, espnSettle,
 });

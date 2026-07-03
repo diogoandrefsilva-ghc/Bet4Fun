@@ -267,15 +267,68 @@ END; $$;
 -- Criação de conteúdo (admin)
 -- ---------------------------------------------------------------------
 
--- Criar jogo + conjunto ENXUTO de mercados
--- Decisão (ver SPECS §7): numa fase inicial com poucos jogadores, abrimos só
--- o essencial para não poluir. Se quiseres reabrir os mercados extra (Ambas
--- marcam, 1ª a marcar, Cartão vermelho, Prolongamento), acrescenta-os aqui.
+-- Catálogo de mercados por jogo (fonte de verdade para a geração automática;
+-- espelhado no MARKET_CATALOG do js/app.js, que serve só para desenhar o UI).
+-- Os mercados knockout_only só abrem nos jogos a eliminar.
+CREATE OR REPLACE FUNCTION bet4fun.market_catalog(p_team_a text, p_team_b text)
+RETURNS TABLE(pos int, name text, risk text, knockout_only boolean, options text[])
+LANGUAGE sql IMMUTABLE AS $$
+  VALUES
+    (1, 'Resultado (1X2)',         'low',  false, ARRAY[p_team_a, 'Empate', p_team_b]),
+    (2, 'Mais/Menos 2.5 golos',    'low',  false, ARRAY['Mais 2.5', 'Menos 2.5']),
+    (3, 'Ambas marcam',            'low',  false, ARRAY['Sim', 'Não']),
+    (4, '1.ª equipa a marcar',     'mid',  false, ARRAY[p_team_a, p_team_b, 'Sem golos']),
+    (5, 'Cartão vermelho no jogo', 'mid',  false, ARRAY['Sim', 'Não']),
+    (6, 'Resultado exato',         'high', false, ARRAY['0-0','1-0','0-1','1-1','2-0','0-2','2-1','1-2','2-2','3-0','0-3','3-1','1-3','3-2','2-3','3-3','Outro']),
+    (7, 'Decisão por penáltis',    'high', true,  ARRAY['Sim', 'Não'])
+$$;
+
+-- Nomes dos mercados por defeito (lê settings('default_markets');
+-- fallback = conjunto enxuto original)
+CREATE OR REPLACE FUNCTION bet4fun.default_market_names()
+RETURNS text[] LANGUAGE sql STABLE SECURITY DEFINER SET search_path = bet4fun AS $$
+  SELECT COALESCE(
+    (SELECT array_agg(x.v)
+     FROM settings s, jsonb_array_elements_text(s.value) AS x(v)
+     WHERE s.key = 'default_markets' AND jsonb_typeof(s.value) = 'array'),
+    ARRAY['Resultado (1X2)', 'Mais/Menos 2.5 golos', 'Resultado exato', 'Decisão por penáltis']
+  );
+$$;
+
+-- Guardar os mercados por defeito (admin). Valida contra o catálogo e
+-- guarda na ordem do catálogo (deduplica de borla).
+CREATE OR REPLACE FUNCTION bet4fun.set_default_markets(p_names text[])
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = bet4fun AS $$
+DECLARE v_valid text[]; v_bad text;
+BEGIN
+  IF NOT bet4fun.is_admin() THEN RAISE EXCEPTION 'Apenas admin'; END IF;
+  IF p_names IS NULL OR array_length(p_names, 1) IS NULL THEN
+    RAISE EXCEPTION 'Escolhe pelo menos um mercado';
+  END IF;
+
+  SELECT n INTO v_bad FROM unnest(p_names) AS n
+    WHERE n NOT IN (SELECT cat.name FROM bet4fun.market_catalog('A', 'B') cat)
+    LIMIT 1;
+  IF v_bad IS NOT NULL THEN RAISE EXCEPTION 'Mercado desconhecido: %', v_bad; END IF;
+
+  SELECT array_agg(cat.name ORDER BY cat.pos) INTO v_valid
+    FROM bet4fun.market_catalog('A', 'B') cat WHERE cat.name = ANY (p_names);
+  IF NOT EXISTS (SELECT 1 FROM bet4fun.market_catalog('A', 'B') cat
+                 WHERE cat.name = ANY (v_valid) AND NOT cat.knockout_only) THEN
+    RAISE EXCEPTION 'Escolhe pelo menos um mercado que não seja só de eliminatórias';
+  END IF;
+
+  INSERT INTO settings(key, value) VALUES ('default_markets', to_jsonb(v_valid))
+    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
+END; $$;
+
+-- Criar jogo + mercados por defeito (config em settings('default_markets');
+-- ver SPECS §7). Os knockout_only só entram nos jogos a eliminar.
 CREATE OR REPLACE FUNCTION bet4fun.create_match_with_markets(
   p_stage text, p_team_a text, p_flag_a text, p_team_b text, p_flag_b text,
   p_kickoff_at timestamptz, p_knockout boolean DEFAULT false)
 RETURNS bigint LANGUAGE plpgsql SECURITY DEFINER SET search_path = bet4fun AS $$
-DECLARE v_match bigint; v_mk bigint;
+DECLARE v_match bigint; v_names text[]; c record; v_mk bigint; i int;
 BEGIN
   IF NOT bet4fun.is_admin() THEN RAISE EXCEPTION 'Apenas admin'; END IF;
 
@@ -283,29 +336,46 @@ BEGIN
     VALUES (p_stage, p_team_a, p_flag_a, p_team_b, p_flag_b, p_kickoff_at)
     RETURNING id INTO v_match;
 
-  -- Resultado (1X2) — risco baixo
-  INSERT INTO markets(match_id, name, risk, closes_at) VALUES (v_match, 'Resultado (1X2)', 'low', p_kickoff_at) RETURNING id INTO v_mk;
-  INSERT INTO market_options(market_id, label, sort) VALUES (v_mk, p_team_a, 0), (v_mk, 'Empate', 1), (v_mk, p_team_b, 2);
-
-  -- Mais/Menos 2.5 golos — risco baixo
-  INSERT INTO markets(match_id, name, risk, closes_at) VALUES (v_match, 'Mais/Menos 2.5 golos', 'low', p_kickoff_at) RETURNING id INTO v_mk;
-  INSERT INTO market_options(market_id, label, sort) VALUES (v_mk, 'Mais 2.5', 0), (v_mk, 'Menos 2.5', 1);
-
-  -- Resultado exato — risco alto (o "jackpot")
-  INSERT INTO markets(match_id, name, risk, closes_at) VALUES (v_match, 'Resultado exato', 'high', p_kickoff_at) RETURNING id INTO v_mk;
-  INSERT INTO market_options(market_id, label, sort) VALUES
-    (v_mk,'0-0',0),(v_mk,'1-0',1),(v_mk,'0-1',2),(v_mk,'1-1',3),
-    (v_mk,'2-0',4),(v_mk,'0-2',5),(v_mk,'2-1',6),(v_mk,'1-2',7),
-    (v_mk,'2-2',8),(v_mk,'3-0',9),(v_mk,'0-3',10),(v_mk,'3-1',11),
-    (v_mk,'1-3',12),(v_mk,'3-2',13),(v_mk,'2-3',14),(v_mk,'3-3',15),(v_mk,'Outro',16);
-
-  -- Só nos jogos a eliminar: Decisão por penáltis — risco alto
-  IF p_knockout THEN
-    INSERT INTO markets(match_id, name, risk, closes_at) VALUES (v_match, 'Decisão por penáltis', 'high', p_kickoff_at) RETURNING id INTO v_mk;
-    INSERT INTO market_options(market_id, label, sort) VALUES (v_mk, 'Sim', 0), (v_mk, 'Não', 1);
-  END IF;
+  v_names := bet4fun.default_market_names();
+  FOR c IN SELECT * FROM bet4fun.market_catalog(p_team_a, p_team_b) cat
+           WHERE cat.name = ANY (v_names) ORDER BY cat.pos LOOP
+    CONTINUE WHEN c.knockout_only AND NOT p_knockout;
+    INSERT INTO markets(match_id, name, risk, closes_at)
+      VALUES (v_match, c.name, c.risk, p_kickoff_at) RETURNING id INTO v_mk;
+    FOR i IN 1 .. array_length(c.options, 1) LOOP
+      INSERT INTO market_options(market_id, label, sort) VALUES (v_mk, c.options[i], i - 1);
+    END LOOP;
+  END LOOP;
 
   RETURN v_match;
+END; $$;
+
+-- Aplicar a config aos jogos existentes que ainda não começaram: abre os
+-- mercados por defeito em falta. Não remove nenhum mercado já aberto
+-- (remoções devolvem apostas — fazem-se jogo a jogo no "Editar jogo").
+-- Devolve o nº de mercados abertos.
+CREATE OR REPLACE FUNCTION bet4fun.apply_default_markets()
+RETURNS int LANGUAGE plpgsql SECURITY DEFINER SET search_path = bet4fun AS $$
+DECLARE
+  v_names text[] := bet4fun.default_market_names();
+  m record; c record; v_mk bigint; i int; v_n int := 0; v_knockout boolean;
+BEGIN
+  IF NOT bet4fun.is_admin() THEN RAISE EXCEPTION 'Apenas admin'; END IF;
+  FOR m IN SELECT * FROM matches WHERE status = 'scheduled' AND kickoff_at > now() LOOP
+    v_knockout := m.stage NOT ILIKE '%grupo%';   -- 'Fase de grupos' vs eliminatórias
+    FOR c IN SELECT * FROM bet4fun.market_catalog(m.team_a, m.team_b) cat
+             WHERE cat.name = ANY (v_names) ORDER BY cat.pos LOOP
+      CONTINUE WHEN c.knockout_only AND NOT v_knockout;
+      CONTINUE WHEN EXISTS (SELECT 1 FROM markets mk WHERE mk.match_id = m.id AND mk.name = c.name);
+      INSERT INTO markets(match_id, name, risk, closes_at)
+        VALUES (m.id, c.name, c.risk, m.kickoff_at) RETURNING id INTO v_mk;
+      FOR i IN 1 .. array_length(c.options, 1) LOOP
+        INSERT INTO market_options(market_id, label, sort) VALUES (v_mk, c.options[i], i - 1);
+      END LOOP;
+      v_n := v_n + 1;
+    END LOOP;
+  END LOOP;
+  RETURN v_n;
 END; $$;
 
 -- ---------------------------------------------------------------------
