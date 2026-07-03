@@ -74,7 +74,7 @@ CREATE TABLE bet4fun.matches (
   flag_b     text,
   kickoff_at timestamptz NOT NULL,          -- fecho das apostas = kickoff_at
   score_a    int,
-  score_b    int,                           -- 90 min regulamentares
+  score_b    int,                           -- fim do jogo (prolong. incl., sem penáltis)
   status     text NOT NULL DEFAULT 'scheduled',
   CONSTRAINT matches_pkey PRIMARY KEY (id),
   CONSTRAINT matches_status_check CHECK (status IN ('scheduled','live','finished','settled'))
@@ -193,18 +193,34 @@ CREATE OR REPLACE VIEW bet4fun.match_pots AS
   WHERE m.match_id IS NOT NULL
   GROUP BY m.match_id;
 
--- Leaderboard: saldo + delta recente (24h) + badges agregados
+-- Leaderboard: valor total (saldo + fichas cativas) + delta + badges
+--   As fichas apostadas em mercados por liquidar (open/closed) NÃO são
+--   descontadas na tabela — ficam CATIVAS e voltam a contar como valor do
+--   jogador até o evento liquidar. O saldo gastável (view balances) já foi
+--   debitado no place_bet; aqui somamos de volta o que está cativo.
+--   O delta recente ignora o vai-e-vem do cativo (bet/refund) — só conta
+--   ganhos realizados (payout/bailout/admin_adjust) para não "afundar" a
+--   tabela quando alguém aposta.
 CREATE OR REPLACE VIEW bet4fun.leaderboard AS
   SELECT p.id, p.display_name, p.avatar_emoji,
-         COALESCE(bal.chips, 0)            AS chips,
-         COALESCE(d.delta, 0)             AS delta,
-         COALESCE(bg.codes, '{}'::text[]) AS badge_codes
+         (COALESCE(bal.chips, 0) + COALESCE(lk.locked, 0)) AS chips,
+         COALESCE(lk.locked, 0)                            AS locked,
+         COALESCE(d.delta, 0)                              AS delta,
+         COALESCE(bg.codes, '{}'::text[])                  AS badge_codes
   FROM bet4fun.profiles p
   LEFT JOIN bet4fun.balances bal ON bal.profile_id = p.id
   LEFT JOIN (
+    SELECT b.profile_id, SUM(b.stake)::int AS locked
+    FROM bet4fun.bets b
+    JOIN bet4fun.markets m ON m.id = b.market_id
+    WHERE m.status IN ('open', 'closed')
+    GROUP BY b.profile_id
+  ) lk ON lk.profile_id = p.id
+  LEFT JOIN (
     SELECT profile_id, SUM(amount)::int AS delta
     FROM bet4fun.transactions
-    WHERE created_at >= now() - interval '24 hours' AND kind <> 'initial'
+    WHERE created_at >= now() - interval '24 hours'
+      AND kind IN ('payout', 'bailout', 'admin_adjust')
     GROUP BY profile_id
   ) d ON d.profile_id = p.id
   LEFT JOIN (

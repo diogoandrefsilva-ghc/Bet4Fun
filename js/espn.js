@@ -190,9 +190,13 @@ export async function fetchEspnEvents(extraDatesMs = []) {
 }
 
 /* Dado um jogo do ESPN + os mercados do nosso jogo (com opções), calcula o
-   que se pode liquidar automaticamente. Respeita a regra dos 90 min:
-   1X2 / Mais-Menos / Resultado exato só auto-liquidam se o jogo NÃO foi além
-   dos 90'. "Decisão por penáltis" liquida sempre (pelo shootoutScore). */
+   que se pode liquidar automaticamente.
+
+   REGRA (2026-07): as apostas de resultado/golos contam o marcador ao FIM
+   DO JOGO — prolongamento incluído — e EXCLUEM a marcação de grandes
+   penalidades. Ou seja, usa-se `game.scoreA/scoreB` do ESPN (que já é o
+   resultado final ao fim dos 120', sem o shootout). "Decisão por penáltis"
+   liquida pelo shootoutScore (game.wentToPens). */
 export function computeSettlement(game, markets, teamAPt, teamBPt) {
   const ptScore = {};
   ptScore[teamPt(game.teamAEn)] = game.scoreA;
@@ -212,10 +216,9 @@ export function computeSettlement(game, markets, teamAPt, teamBPt) {
       continue;
     }
 
-    // Mercados de golos: contam só os 90 min regulamentares
     if (!known) { skipped.push({ name, reason: "sem resultado" }); continue; }
-    if (game.beyond90) { skipped.push({ name, reason: "prolongamento/penáltis — liquida à mão com o resultado aos 90'" }); continue; }
 
+    // Resultado ao fim do jogo (120' quando há prolongamento; exclui penáltis)
     let label = null;
     if (name.startsWith("Resultado (1X2)")) label = sA > sB ? teamAPt : sB > sA ? teamBPt : "Empate";
     else if (name.startsWith("Mais/Menos")) label = (sA + sB) > 2 ? "Mais 2.5" : "Menos 2.5";
@@ -226,10 +229,13 @@ export function computeSettlement(game, markets, teamAPt, teamBPt) {
       const opt = findOpt(mk, label);
       if (opt) toSettle.push({ marketId: mk.id, optionId: opt.id, marketName: name, label });
       else skipped.push({ name, reason: "opção não encontrada" });
+    } else {
+      // mercados que o ESPN não resolve (1.ª equipa a marcar, cartões, ...)
+      skipped.push({ name, reason: "liquida à mão" });
     }
   }
 
-  return { toSettle, skipped, score: (known && !game.beyond90) ? { a: sA, b: sB } : null };
+  return { toSettle, skipped, score: known ? { a: sA, b: sB } : null };
 }
 
 /* Marcadores "a ganhar" face ao resultado ATUAL (ao vivo). Ao contrário da

@@ -53,7 +53,7 @@ matches (
   team_a text NOT NULL, flag_a text,
   team_b text NOT NULL, flag_b text,
   kickoff_at timestamptz NOT NULL,     -- fecho das apostas = kickoff_at
-  score_a int NULL, score_b int NULL,  -- 90 min regulamentares
+  score_a int NULL, score_b int NULL,  -- resultado ao fim do jogo (prolong. incl., sem penáltis)
   status text CHECK (status IN ('scheduled','live','finished','settled')) DEFAULT 'scheduled'
 )
 
@@ -296,7 +296,7 @@ Chat interno (usa-se o WhatsApp), odds reais, notificações push, import autom�
 2. **Fichas = inteiros**, arredondamento por `floor`, resto para o maior apostador vencedor.
 3. **Ninguém acerta ⇒ reembolso** (rollover fica para v2).
 4. **1 aposta por mercado por jogador**, substituível até ao fecho.
-5. **1X2 conta só os 90 minutos** regulamentares, mesmo nos jogos a eliminar.
+5. **Resultado/golos contam o fim do jogo** — prolongamento incluído nos jogos a eliminar; exclui grandes penalidades (essas só contam para "Decisão por penáltis").
 6. **Segredo individual até ao kickoff**, pools agregados públicos.
 7. Badge do bailout é **permanente** durante o torneio.
 8. Vanilla JS, sem framework, sem build step.

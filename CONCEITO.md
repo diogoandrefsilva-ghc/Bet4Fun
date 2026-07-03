@@ -31,7 +31,7 @@ Os mercados são divididos por níveis de risco para ajudar a malta a delinear a
 > ajuste em `db/functions.sql` (`create_match_with_markets`).
 
 ### 🟢 Risco Baixo (O Pão Nosso)
-* **Resultado Regular (1X2):** Vitória da Equipa A, Empate ou Vitória da Equipa B (contando apenas os 90 minutos regulamentares).
+* **Resultado Regular (1X2):** Vitória da Equipa A, Empate ou Vitória da Equipa B (conta o resultado ao **fim do jogo** — prolongamento incluído nos jogos a eliminar; exclui a marcação de grandes penalidades).
 * **Mais/Menos Golos (Over/Under):** Apostar se o jogo terá mais ou menos de 2.5 golos.
 
 ### 🟡 Risco Médio (A Roleta)
