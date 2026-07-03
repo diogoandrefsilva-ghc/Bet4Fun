@@ -665,3 +665,39 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
   padding: 4px 8px; border-radius: 8px; flex-shrink: 0;
 }
 .link-btn:active { background: var(--pitch-soft); }
+
+/* ============================================================
+   Ecrã de load inicial (index.html, dentro do #app).
+   Substituído pelo primeiro render de app.js.
+   ============================================================ */
+.app-loading {
+  height: 100dvh;
+  max-width: 480px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  background: var(--bg);
+}
+.app-loading__title {
+  font-size: 1.9rem;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+.app-loading__spinner {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 3px solid var(--pitch-soft);
+  border-top-color: var(--pitch);
+  animation: app-loading-spin 0.7s linear infinite;
+}
+@keyframes app-loading-spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-loading__spinner { animation-duration: 1.6s; }
+}
