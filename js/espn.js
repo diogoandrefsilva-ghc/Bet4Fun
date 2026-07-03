@@ -231,3 +231,33 @@ export function computeSettlement(game, markets, teamAPt, teamBPt) {
 
   return { toSettle, skipped, score: (known && !game.beyond90) ? { a: sA, b: sB } : null };
 }
+
+/* Marcadores "a ganhar" face ao resultado ATUAL (ao vivo). Ao contrário da
+   liquidação, é provisório e não respeita a regra dos 90' — serve só para
+   assinalar, em cada mercado, qual a opção que iria pagar se o jogo acabasse
+   agora. Devolve { leaders: { [marketId]: optionId }, score: {a,b}|null }.
+   `markets` são os mercados no formato do detalhe (id + options[{id,label}]). */
+export function computeLiveMarkers(game, markets, teamAPt, teamBPt) {
+  const ptScore = {};
+  ptScore[teamPt(game.teamAEn)] = game.scoreA;
+  ptScore[teamPt(game.teamBEn)] = game.scoreB;
+  const sA = ptScore[teamAPt], sB = ptScore[teamBPt];
+  const leaders = {};
+  if (!Number.isFinite(sA) || !Number.isFinite(sB)) return { leaders, score: null };
+
+  const findOpt = (mk, label) => (mk.options || []).find((o) => o.label === label);
+  for (const mk of markets) {
+    const name = mk.name || "";
+    let label = null;
+    if (name.startsWith("Resultado (1X2)")) label = sA > sB ? teamAPt : sB > sA ? teamBPt : "Empate";
+    else if (name.startsWith("Mais/Menos")) label = (sA + sB) > 2 ? "Mais 2.5" : "Menos 2.5";
+    else if (name.startsWith("Resultado exato")) { const s = `${sA}-${sB}`; label = findOpt(mk, s) ? s : "Outro"; }
+    else if (name.startsWith("Ambas marcam")) label = (sA > 0 && sB > 0) ? "Sim" : "Não";
+    else if (name.startsWith("Decisão por penáltis")) label = game.wentToPens ? "Sim" : "Não";
+    if (label) {
+      const opt = findOpt(mk, label);
+      if (opt) leaders[String(mk.id)] = String(opt.id);
+    }
+  }
+  return { leaders, score: { a: sA, b: sB } };
+}
