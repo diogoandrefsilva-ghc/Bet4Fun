@@ -29,7 +29,7 @@ const routes = {
   classificacao: renderClassificacao,
   perfil: renderPerfil,
   admin: renderAdmin,
-  settle: renderSettle,
+  settle: renderEditarJogo,   // alias: liquidação vive agora no ecrã de edição
   criar: renderCriarJogo,
   editar: renderEditarJogo,
   mercados: renderMercadosDefeito,
@@ -660,7 +660,7 @@ async function renderClassificacao() {
     </div>
     ${players.length ? players.map((p, i) => `
       <div class="lb-row ${i === 0 ? "king" : ""} ${p.isMe ? "me" : ""}" onclick="togglePlayerHistory('${p.id}', this)">
-        <span class="lb-rank">${i === 0 ? "👑" : i + 1}</span>
+        <span class="lb-rank">${i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1}</span>
         <span class="lb-avatar">${p.avatar}</span>
         <div class="lb-info">
           <div class="lb-name">${escapeHtml(p.name)}${p.isMe ? " (tu)" : ""}</div>
@@ -792,7 +792,10 @@ async function renderAdmin() {
   const [pending, bailouts, toSettle, matches] = await Promise.all([
     API.getPendingPlayers(), API.getBailouts(), API.getMatchesToSettle(), API.getMatches(),
   ]);
-  const editable = matches.filter((m) => m.status !== "done");
+  // Uma só lista de jogos para gerir: os que ainda não estão fechados +
+  // os que têm mercados por liquidar. Sinaliza-se quais precisam de resultado.
+  const toSettleIds = new Set(toSettle.map((s) => String(s.id)));
+  const games = matches.filter((m) => m.status !== "done" || toSettleIds.has(String(m.id)));
 
   shell(`
     <button class="back-btn" onclick="location.hash='#/perfil'">← Perfil</button>
@@ -815,22 +818,21 @@ async function renderAdmin() {
         <button class="btn-small" onclick="approveBailout('${escapeAttr(b.id)}','${escapeAttr(b.who)}')">Aprovar</button>
       </div>`).join("") : `<div class="empty" style="padding:20px"><span class="ico">💸</span>Sem pedidos de resgate.</div>`}
 
-    <div class="section-label">Liquidar mercados</div>
-    ${toSettle.length ? toSettle.map((s) => `
-      <div class="card admin-item">
-        <div class="desc"><div class="t">${escapeHtml(s.match)}</div><div class="s">${escapeHtml(s.detail)}</div></div>
-        <button class="btn-small outline" onclick="location.hash='#/settle/${s.id}'">Liquidar</button>
-      </div>`).join("") : `<div class="empty" style="padding:20px"><span class="ico">🧾</span>Nada por liquidar.</div>`}
-
-    <div class="section-label">Editar jogos e mercados</div>
-    ${editable.length ? editable.map((m) => `
+    <div class="section-label">Jogos — editar e liquidar</div>
+    ${games.length ? games.map((m) => {
+      const needsSettle = toSettleIds.has(String(m.id));
+      const sub = needsSettle
+        ? `⚠️ resultado por liquidar${m.status === "live" ? " · a decorrer" : ""}`
+        : `${m.kickoff}${m.status === "live" ? " · a decorrer" : ""}`;
+      return `
       <div class="card admin-item">
         <div class="desc">
           <div class="t">${m.flagA} ${escapeHtml(m.teamA)} vs ${escapeHtml(m.teamB)} ${m.flagB}</div>
-          <div class="s">${m.kickoff}${m.status === "live" ? " · a decorrer" : ""}</div>
+          <div class="s" ${needsSettle ? 'style="color:var(--risk-high);font-weight:700"' : ""}>${escapeHtml(sub)}</div>
         </div>
-        <button class="btn-small outline" onclick="location.hash='#/editar/${m.id}'">Editar</button>
-      </div>`).join("") : `<div class="empty" style="padding:20px"><span class="ico">📅</span>Sem jogos por editar.</div>`}
+        <button class="btn-small ${needsSettle ? "" : "outline"}" onclick="location.hash='#/editar/${m.id}'">${needsSettle ? "Liquidar" : "Gerir"}</button>
+      </div>`;
+    }).join("") : `<div class="empty" style="padding:20px"><span class="ico">📅</span>Sem jogos para gerir.</div>`}
 
     <div class="section-label">Gestão</div>
     <div class="card admin-item">
@@ -860,51 +862,6 @@ async function approveBailout(id, who) {
 
 /* ---------- Ecrã: Liquidação de um jogo (admin) ---------- */
 
-async function renderSettle(matchId) {
-  if (!state.profile?.isAdmin) { location.hash = "#/perfil"; return; }
-  shell(loadingScreen());
-  const { match, markets } = await API.getSettleForm(matchId);
-
-  const scoreKnown = match.scoreA != null && match.scoreB != null;
-  const marketCard = (mk) => `
-    <div class="card">
-      <div class="market-title-row">
-        <span class="market-title">${escapeHtml(mk.name)}</span>
-        <span class="market-pot" style="color:var(--text-faint)">${settleStatusLabel(mk.status)}</span>
-      </div>
-      ${mk.status === "settled" || mk.status === "void" ? "" : `
-        <div class="options ${mk.options.length === 2 ? "cols-2" : ""}">
-          ${mk.options.map((o) => `
-            <button class="option-btn ${mk.winningOptionId === o.id ? "selected" : ""}" onclick="pickWinner('${matchId}','${mk.id}','${o.id}')">
-              <span class="opt-label">${escapeHtml(o.label)}</span>
-            </button>`).join("")}
-        </div>
-        <button class="btn-small outline" style="margin-top:10px" onclick="voidMarket('${matchId}','${mk.id}')">Anular (reembolso)</button>`}
-    </div>`;
-
-  shell(`
-    <button class="back-btn" onclick="location.hash='#/admin'">← Admin</button>
-    <h1 class="page-title">Liquidar jogo</h1>
-    <p class="page-sub">${match.flagA} ${escapeHtml(match.teamA)} vs ${escapeHtml(match.teamB)} ${match.flagB}</p>
-
-    <div class="card">
-      <div class="section-label" style="margin-top:0">Resultado ao fim do jogo (prolongamento incl., sem penáltis)</div>
-      <div style="display:flex;align-items:center;gap:10px;justify-content:center">
-        <input id="scoreA" type="number" min="0" inputmode="numeric" value="${match.scoreA ?? ""}" style="width:64px;text-align:center;font-size:1.3rem;font-weight:800;padding:10px;background:var(--bg-elev);border:1px solid var(--border);border-radius:10px;color:var(--text)">
-        <span style="font-weight:800">–</span>
-        <input id="scoreB" type="number" min="0" inputmode="numeric" value="${match.scoreB ?? ""}" style="width:64px;text-align:center;font-size:1.3rem;font-weight:800;padding:10px;background:var(--bg-elev);border:1px solid var(--border);border-radius:10px;color:var(--text)">
-      </div>
-      <button class="btn-primary" style="margin-top:12px" onclick="saveScore('${matchId}')">Guardar resultado</button>
-    </div>
-
-    <div class="callout"><span class="ico">🏁</span>
-      <span>${scoreKnown ? "Toca na opção <strong>vencedora</strong> de cada mercado para liquidar (paga o pote proporcionalmente ao stake)." : "Introduz e guarda o resultado primeiro. Depois liquida cada mercado."}</span>
-    </div>
-
-    ${markets.length ? markets.map(marketCard).join("") : `<div class="empty"><span class="ico">🃏</span>Sem mercados.</div>`}
-  `);
-}
-
 function settleStatusLabel(s) {
   return s === "settled" ? "✅ Liquidado" : s === "void" ? "🚫 Anulado" : "Por liquidar";
 }
@@ -912,17 +869,17 @@ function settleStatusLabel(s) {
 async function saveScore(matchId) {
   const a = $("#scoreA").value, b = $("#scoreB").value;
   if (a === "" || b === "") { toast("Preenche o resultado."); return; }
-  try { await API.setMatchScore(matchId, a, b); toast("Resultado guardado 🏁"); await renderSettle(matchId); }
+  try { await API.setMatchScore(matchId, a, b); toast("Resultado guardado 🏁"); await renderEditarJogo(matchId); }
   catch (e) { toast(`❌ ${e.message}`); }
 }
 
 async function pickWinner(matchId, marketId, optionId) {
-  try { await API.settleMarket(marketId, optionId); toast("Mercado liquidado — potes pagos 🪙"); await renderSettle(matchId); }
+  try { await API.settleMarket(marketId, optionId); toast("Mercado liquidado — potes pagos 🪙"); await renderEditarJogo(matchId); }
   catch (e) { toast(`❌ ${e.message}`); }
 }
 
 async function voidMarket(matchId, marketId) {
-  try { await API.voidMarket(marketId); toast("Mercado anulado — apostas reembolsadas ↩️"); await renderSettle(matchId); }
+  try { await API.voidMarket(marketId); toast("Mercado anulado — apostas reembolsadas ↩️"); await renderEditarJogo(matchId); }
   catch (e) { toast(`❌ ${e.message}`); }
 }
 
@@ -1000,27 +957,51 @@ async function renderEditarJogo(matchId) {
 
   const have = new Set(markets.map((mk) => mk.name));
   const missing = MARKET_CATALOG.filter((c) => !have.has(c.name));
+  const scoreKnown = match.scoreA != null && match.scoreB != null;
+  const started = match.status !== "open";
 
-  const marketRow = (mk) => `
-    <div class="card admin-item">
-      <span class="risk-dot ${RISK[mk.risk]?.cls || "risk-mid-bg"}" style="flex-shrink:0"></span>
-      <div class="desc">
-        <div class="t">${escapeHtml(mk.name)}</div>
-        <div class="s">${mk.nOptions} opções · Pote 🪙 ${mk.pot} · ${settleStatusLabel(mk.status)}</div>
-      </div>
-      ${mk.status === "settled" ? "" : `
-        <button class="btn-small outline" style="border-color:rgba(240,86,74,0.4);color:var(--risk-high)"
-          onclick="adminRemoveMarket('${escapeAttr(match.id)}','${escapeAttr(mk.id)}',${mk.pot},'${escapeAttr(mk.name)}')">Remover</button>`}
-    </div>`;
+  // Cartão de mercado unificado: gerir (remover) + liquidar (escolher vencedora
+  // / anular) no mesmo sítio. Sem resultado ainda? Mostra na mesma os botões —
+  // a "Decisão por penáltis" e casos manuais não dependem do marcador.
+  const marketCard = (mk) => {
+    const done = mk.status === "settled";
+    const voided = mk.status === "void";
+    const winner = done ? (mk.options.find((o) => o.id === mk.winningOptionId)?.label || "?") : null;
+    return `
+      <div class="card market">
+        <div class="market-title-row">
+          <span class="market-title">
+            <span class="risk-dot ${RISK[mk.risk]?.cls || "risk-mid-bg"}" style="display:inline-block;vertical-align:middle;margin-right:6px"></span>
+            ${escapeHtml(mk.name)}
+          </span>
+          <span class="market-pot">Pote 🪙 ${mk.pot}</span>
+        </div>
+        <div class="market-note" style="margin-top:0">
+          ${settleStatusLabel(mk.status)}${winner ? ` · vencedora: <strong>${escapeHtml(winner)}</strong>` : ""} · ${mk.nOptions} opções
+        </div>
+        ${done || voided ? "" : `
+          <div class="options ${mk.options.length === 2 ? "cols-2" : ""}">
+            ${mk.options.map((o) => `
+              <button class="option-btn ${mk.winningOptionId === o.id ? "opt-winner" : ""}" onclick="pickWinner('${escapeAttr(match.id)}','${escapeAttr(mk.id)}','${escapeAttr(o.id)}')">
+                <span class="opt-label">${escapeHtml(o.label)}</span>
+              </button>`).join("")}
+          </div>
+          <div class="market-locked-foot" style="justify-content:flex-start;gap:8px;color:var(--text-faint)">
+            <button class="btn-small outline" onclick="voidMarket('${escapeAttr(match.id)}','${escapeAttr(mk.id)}')">Anular (reembolso)</button>
+            <button class="btn-small outline" style="border-color:rgba(240,86,74,0.4);color:var(--risk-high)"
+              onclick="adminRemoveMarket('${escapeAttr(match.id)}','${escapeAttr(mk.id)}',${mk.pot},'${escapeAttr(mk.name)}')">Remover</button>
+          </div>`}
+      </div>`;
+  };
 
   shell(`
     <button class="back-btn" onclick="location.hash='#/admin'">← Admin</button>
-    <h1 class="page-title">Editar jogo</h1>
+    <h1 class="page-title">Gerir jogo</h1>
     <p class="page-sub">${match.flagA} ${escapeHtml(match.teamA)} vs ${escapeHtml(match.teamB)} ${match.flagB}</p>
 
-    ${match.status !== "open" ? `
+    ${started ? `
       <div class="callout warn"><span class="ico">⚠️</span>
-        <span>Este jogo já começou. Mexer nos mercados agora devolve as fichas apostadas.</span></div>` : ""}
+        <span>Este jogo já começou. Remover ou anular mercados agora devolve as fichas apostadas.</span></div>` : ""}
 
     <div class="section-label">Dados do jogo</div>
     <div class="card">
@@ -1031,8 +1012,20 @@ async function renderEditarJogo(matchId) {
       <button class="btn-primary" onclick="saveMatchEdit('${escapeAttr(match.id)}')">Guardar alterações</button>
     </div>
 
+    <div class="section-label">Resultado & liquidação</div>
+    <div class="card">
+      <label class="field-label">Resultado ao fim do jogo (prolongamento incl., sem penáltis)</label>
+      <div style="display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:4px">
+        <input id="scoreA" type="number" min="0" inputmode="numeric" value="${match.scoreA ?? ""}" style="width:64px;text-align:center;font-size:1.3rem;font-weight:800;padding:10px;background:var(--bg-elev);border:1px solid var(--border);border-radius:10px;color:var(--text)">
+        <span style="font-weight:800">–</span>
+        <input id="scoreB" type="number" min="0" inputmode="numeric" value="${match.scoreB ?? ""}" style="width:64px;text-align:center;font-size:1.3rem;font-weight:800;padding:10px;background:var(--bg-elev);border:1px solid var(--border);border-radius:10px;color:var(--text)">
+      </div>
+      <button class="btn-primary" onclick="saveScore('${escapeAttr(match.id)}')">Guardar resultado</button>
+      <div class="market-note" style="margin:10px 0 0">🏁 ${scoreKnown ? "Toca na opção <strong>vencedora</strong> de cada mercado para o liquidar (paga o pote proporcionalmente ao stake)." : "Guarda o resultado primeiro; depois liquida cada mercado tocando na opção vencedora."}</div>
+    </div>
+
     <div class="section-label">Mercados deste jogo</div>
-    ${markets.length ? markets.map(marketRow).join("") : `<div class="empty" style="padding:20px"><span class="ico">🃏</span>Sem mercados. Adiciona em baixo.</div>`}
+    ${markets.length ? markets.map(marketCard).join("") : `<div class="empty" style="padding:20px"><span class="ico">🃏</span>Sem mercados. Adiciona em baixo.</div>`}
 
     <div class="section-label">Adicionar mercado</div>
     ${missing.length ? missing.map((c, i) => `
@@ -1161,12 +1154,16 @@ async function renderEspn() {
   if (!state.profile?.isAdmin) { location.hash = "#/perfil"; return; }
   shell(loadingScreen("A falar com o ESPN…"));
 
-  const ours = await API.getMatches();
+  const [ours, toSettle] = await Promise.all([API.getMatches(), API.getMatchesToSettle()]);
   const datesMs = ours.map((m) => new Date(m.kickoffAt).getTime());
+  // ids dos jogos que ainda têm mercados por liquidar (para não mostrar como
+  // "por liquidar" os que já foram fechados à mão ou pelo automatismo)
+  const pendingIds = new Set(toSettle.map((s) => String(s.id)));
 
   let games = [];
   let failed = false;
-  try { games = await fetchEspnEvents(datesMs); }
+  // janela larga para a frente → traz também quartos/meias/final ainda distantes
+  try { games = await fetchEspnEvents(datesMs, 21); }
   catch { failed = true; }
   if (!failed && !games.length) failed = true; // nada veio → provável bloqueio/erro
 
@@ -1179,7 +1176,9 @@ async function renderEspn() {
   const upcoming = games.filter((g) => g.state !== "post" && !ourByPair[pairKey(teamPt(g.teamAEn), teamPt(g.teamBEn))]);
   const finished = games
     .filter((g) => g.state === "post" && ourByPair[pairKey(teamPt(g.teamAEn), teamPt(g.teamBEn))])
-    .map((g) => ({ g, m: ourByPair[pairKey(teamPt(g.teamAEn), teamPt(g.teamBEn))] }));
+    .map((g) => ({ g, m: ourByPair[pairKey(teamPt(g.teamAEn), teamPt(g.teamBEn))] }))
+    // só os que ainda têm mercados por liquidar — os já fechados desaparecem
+    .filter(({ m }) => pendingIds.has(String(m.id)));
 
   const gameLabel = (g) =>
     `${teamFlag(g.teamAEn)} ${escapeHtml(teamPt(g.teamAEn))} vs ${escapeHtml(teamPt(g.teamBEn))} ${teamFlag(g.teamBEn)}`;
@@ -1216,7 +1215,7 @@ async function renderEspn() {
           </div>
           <div class="s" style="font-size:0.78rem;color:var(--text-faint);margin-bottom:10px">${escapeHtml(g.stagePt)}</div>
           <button class="btn-small" onclick="espnSettle('${escapeAttr(m.id)}')">Liquidar este jogo</button>
-          <button class="btn-small outline" style="margin-left:8px" onclick="location.hash='#/settle/${escapeAttr(m.id)}'">Rever à mão</button>
+          <button class="btn-small outline" style="margin-left:8px" onclick="location.hash='#/editar/${escapeAttr(m.id)}'">Rever à mão</button>
         </div>`;
     }).join("") : `<div class="empty" style="padding:20px"><span class="ico">🧾</span>Nenhum jogo terminado por liquidar.</div>`}
   `);

@@ -575,7 +575,7 @@ const liveAPI = {
     if (error || !m) throwErr(error, "Jogo não encontrado");
     const { data: markets } = await supabase
       .from("markets")
-      .select("id,name,risk,status,market_options(id)")
+      .select("id,name,risk,status,winning_option_id,market_options(id,label,sort)")
       .eq("match_id", matchId).order("id", { ascending: true });
     const ids = (markets || []).map((mk) => mk.id);
     const { data: totals } = ids.length
@@ -587,10 +587,15 @@ const liveAPI = {
         id: String(m.id), stage: m.stage,
         teamA: m.team_a, flagA: m.flag_a || "", teamB: m.team_b, flagB: m.flag_b || "",
         kickoffAt: m.kickoff_at, status: displayStatus(m),
+        scoreA: m.score_a, scoreB: m.score_b,
       },
       markets: (markets || []).map((mk) => ({
         id: String(mk.id), name: mk.name, risk: mk.risk, status: mk.status,
         pot: totMap[mk.id] || 0, nOptions: (mk.market_options || []).length,
+        winningOptionId: mk.winning_option_id != null ? String(mk.winning_option_id) : null,
+        options: (mk.market_options || [])
+          .sort((a, b) => (a.sort || 0) - (b.sort || 0))
+          .map((o) => ({ id: String(o.id), label: o.label })),
       })),
     };
   },
