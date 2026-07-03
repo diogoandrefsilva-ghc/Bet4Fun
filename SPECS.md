@@ -271,12 +271,16 @@ resultado exato, ambas marcam) automaticamente; admin só confirma.
 
 ## 7. Criação de conteúdo (admin)
 
-- Form "Criar jogo": equipas, bandeiras (emoji), fase, kickoff. Ao criar, **gerar automaticamente o
-  conjunto ENXUTO de mercados** via função SQL `create_match_with_markets(...)`. Decisão de produto:
-  numa fase inicial com poucos jogadores, abrir muitos mercados polui e confunde — por isso o
-  conjunto é **global e reduzido**: **1X2**, **Mais/Menos 2.5**, **Resultado exato** (+ **Decisão por
-  penáltis** só nos jogos a eliminar). Reabrir mercados extra (Ambas marcam, 1ª a marcar, Cartão
-  vermelho, Prolongamento) é acrescentá-los nessa função SQL.
+- Form "Criar jogo": equipas, bandeiras (emoji), fase, kickoff. Ao criar, **gerar automaticamente os
+  mercados por defeito** via função SQL `create_match_with_markets(...)`. O conjunto é **global e
+  configurável no painel de admin** (ecrã `#/mercados` → RPC `set_default_markets`), guardado em
+  `settings('default_markets')` como array de nomes do catálogo `bet4fun.market_catalog(...)`
+  (1X2, Mais/Menos 2.5, Ambas marcam, 1.ª a marcar, Cartão vermelho, Resultado exato, Decisão por
+  penáltis — este último só abre nos jogos a eliminar). O valor inicial replica o conjunto enxuto
+  original: **1X2**, **Mais/Menos 2.5**, **Resultado exato** (+ **penáltis** nos jogos a eliminar).
+- RPC `apply_default_markets()` (admin): aplica a config aos jogos existentes que ainda não
+  começaram, abrindo os mercados em falta. Nunca remove mercados já abertos (isso devolve apostas
+  e faz-se jogo a jogo no "Editar jogo"). Devolve o nº de mercados abertos.
 - Mercado "Resultado exato": opções fixas geradas (0-0 … 3-3 + "Outro") para o pool funcionar.
 - Futures criados uma vez no seed (Campeão, Bota de Ouro, Equipa Sensação) com `closes_at` = kickoff do 1º jogo.
 

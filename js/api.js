@@ -618,6 +618,26 @@ const liveAPI = {
     if (error) throwErr(error, "Falha ao apagar o jogo");
     return { ok: true };
   },
+  /* ----- Mercados por defeito (admin) ----- */
+  async getDefaultMarkets() {
+    this._settings = null;   // ler fresco — a config pode ter mudado noutro ecrã
+    const settings = await this._settingsMap();
+    const v = settings.default_markets;
+    return Array.isArray(v) && v.length
+      ? v
+      : ["Resultado (1X2)", "Mais/Menos 2.5 golos", "Resultado exato", "Decisão por penáltis"];
+  },
+  async setDefaultMarkets(names) {
+    const { error } = await supabase.rpc("set_default_markets", { p_names: names });
+    if (error) throwErr(error, "Falha ao guardar os mercados por defeito");
+    this._settings = null;
+    return { ok: true };
+  },
+  async applyDefaultMarkets() {
+    const { data, error } = await supabase.rpc("apply_default_markets");
+    if (error) throwErr(error, "Falha ao aplicar aos jogos existentes");
+    return Number(data) || 0;
+  },
   async createMatch(payload) {
     const { error } = await supabase.rpc("create_match_with_markets", {
       p_stage: payload.stage,
