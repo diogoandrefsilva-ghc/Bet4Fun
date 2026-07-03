@@ -216,6 +216,7 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 .risk-header .risk-sub { color: var(--text-faint); font-size: 0.78rem; }
 
 .market { margin-bottom: 10px; }
+.market-note { font-size: 0.72rem; color: var(--text-faint); margin: -2px 0 9px; line-height: 1.35; }
 .market-title-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
 .market-title { font-weight: 700; font-size: 0.92rem; }
 .market-pot { font-size: 0.78rem; color: var(--accent); font-weight: 700; }
@@ -343,6 +344,7 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 .lb-chips { text-align: right; }
 .lb-chips .amount { font-weight: 800; color: var(--accent); }
 .lb-chips .delta { font-size: 0.72rem; font-weight: 700; display: block; }
+.lb-chips .lb-locked { font-size: 0.7rem; font-weight: 700; color: var(--text-faint); display: block; }
 .delta-up { color: var(--win); }
 .delta-down { color: var(--loss); }
 

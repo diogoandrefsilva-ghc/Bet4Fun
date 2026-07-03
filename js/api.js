@@ -332,9 +332,10 @@ const liveAPI = {
       name: p.display_name,
       avatar: p.avatar_emoji || "⚽",
       chips: p.chips,
+      locked: p.locked || 0,   // fichas cativas (apostadas em eventos por liquidar)
       delta: p.delta || 0,
       badges: (p.badge_codes || []).map(badgeLabel),
-      bankrupt: p.chips < minStake,
+      bankrupt: (p.chips - (p.locked || 0)) < minStake,  // teso = saldo gastável baixo
       isMe: p.id === uid,
     }));
   },

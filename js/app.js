@@ -276,6 +276,21 @@ const RISK = {
   high: { name: "Risco alto", sub: "O jackpot", cls: "risk-high-bg" },
 };
 
+/* Nota explicativa por mercado sobre a regra de liquidação.
+   `knockout` = jogo a eliminar (pode ir a prolongamento/penáltis). */
+function marketNote(name, knockout) {
+  const n = name || "";
+  if (n.startsWith("Decisão por penáltis")) return "Conta se o jogo se decidir nas grandes penalidades.";
+  if (n.startsWith("Resultado (1X2)") || n.startsWith("Mais/Menos") ||
+      n.startsWith("Resultado exato") || n.startsWith("Ambas marcam") ||
+      n.startsWith("1.ª equipa a marcar")) {
+    return knockout
+      ? "Conta o resultado ao fim dos 120' (prolongamento incl., exclui penáltis)."
+      : "Conta o resultado ao fim do jogo (90').";
+  }
+  return null;
+}
+
 async function renderJogoDetalhe(matchId, opts = {}) {
   if (!opts.keepUnlock) state.detailUnlocked = new Set();
   shell(loadingScreen());
@@ -284,6 +299,8 @@ async function renderJogoDetalhe(matchId, opts = {}) {
   const m = detail.match;
   // open = apostas abertas · live = livro aberto (a decorrer) · done = terminado
   const phase = detail.open ? "open" : (m.status === "done" ? "done" : "live");
+  // jogo a eliminar → há mercado "Decisão por penáltis" (conta prolongamento)
+  const knockout = detail.markets.some((mk) => mk.name.startsWith("Decisão por penáltis"));
 
   const groups = ["low", "mid", "high"].map((risk) => {
     const list = detail.markets.filter((mk) => mk.risk === risk);
@@ -295,7 +312,7 @@ async function renderJogoDetalhe(matchId, opts = {}) {
           <span class="risk-name">${RISK[risk].name}</span>
           <span class="risk-sub">· ${RISK[risk].sub}</span>
         </div>
-        ${list.map((mk) => marketCardHtml(mk, phase)).join("")}
+        ${list.map((mk) => marketCardHtml(mk, phase, knockout)).join("")}
       </div>`;
   }).join("");
 
@@ -327,7 +344,9 @@ async function renderJogoDetalhe(matchId, opts = {}) {
    - open  : botões para apostar (ou bloqueado se já apostei)
    - live  : opções em modo revelação (tap → quem apostou) + marca "a ganhar"
    - done  : idem, com a opção vencedora marcada */
-function marketCardHtml(mk, phase) {
+function marketCardHtml(mk, phase, knockout) {
+  const note = marketNote(mk.name, knockout);
+  const noteHtml = note ? `<div class="market-note">ℹ️ ${escapeHtml(note)}</div>` : "";
   if (phase === "open") {
     const locked = mk.mine && !state.detailUnlocked.has(String(mk.id));
     return `
@@ -336,6 +355,7 @@ function marketCardHtml(mk, phase) {
           <span class="market-title">${escapeHtml(mk.name)}</span>
           <span class="market-pot">Pote 🪙 ${mk.pot}</span>
         </div>
+        ${noteHtml}
         <div class="options ${mk.options.length === 2 ? "cols-2" : ""}">
           ${mk.options.map((o) => {
             const isMine = mk.mine && String(mk.mine.optionId) === String(o.id);
@@ -369,6 +389,7 @@ function marketCardHtml(mk, phase) {
         <span class="market-title">${escapeHtml(mk.name)}</span>
         <span class="market-pot">Pote 🪙 ${mk.pot}</span>
       </div>
+      ${noteHtml}
       <div class="options ${mk.options.length === 2 ? "cols-2" : ""}">
         ${mk.options.map((o) => {
           const isMine = mk.mine && String(mk.mine.optionId) === String(o.id);
@@ -592,6 +613,9 @@ async function renderClassificacao() {
   shell(`
     <h1 class="page-title">Classificação</h1>
     <p class="page-sub">Quem manda na tabela e quem está na penúria</p>
+    <div class="callout"><span class="ico">🔒</span>
+      <span>As fichas apostadas em eventos por liquidar ficam <strong>cativas</strong> — contam para o teu valor na tabela até o evento ser liquidado.</span>
+    </div>
     ${players.length ? players.map((p, i) => `
       <div class="lb-row ${i === 0 ? "king" : ""} ${p.isMe ? "me" : ""}">
         <span class="lb-rank">${i === 0 ? "👑" : i + 1}</span>
@@ -602,7 +626,8 @@ async function renderClassificacao() {
         </div>
         <div class="lb-chips">
           <span class="amount">🪙 ${p.chips.toLocaleString("pt-PT")}</span>
-          <span class="delta ${p.delta >= 0 ? "delta-up" : "delta-down"}">${p.delta >= 0 ? "▲" : "▼"} ${Math.abs(p.delta)} recente</span>
+          ${p.locked > 0 ? `<span class="lb-locked">🔒 ${p.locked.toLocaleString("pt-PT")} cativas</span>` : ""}
+          ${p.delta ? `<span class="delta ${p.delta >= 0 ? "delta-up" : "delta-down"}">${p.delta >= 0 ? "▲" : "▼"} ${Math.abs(p.delta)} recente</span>` : ""}
         </div>
       </div>`).join("") : `<div class="empty"><span class="ico">🏆</span>Ainda sem jogadores na mesa.</div>`}
   `);
@@ -774,7 +799,7 @@ async function renderSettle(matchId) {
     <p class="page-sub">${match.flagA} ${escapeHtml(match.teamA)} vs ${escapeHtml(match.teamB)} ${match.flagB}</p>
 
     <div class="card">
-      <div class="section-label" style="margin-top:0">Resultado (90 min)</div>
+      <div class="section-label" style="margin-top:0">Resultado ao fim do jogo (prolongamento incl., sem penáltis)</div>
       <div style="display:flex;align-items:center;gap:10px;justify-content:center">
         <input id="scoreA" type="number" min="0" inputmode="numeric" value="${match.scoreA ?? ""}" style="width:64px;text-align:center;font-size:1.3rem;font-weight:800;padding:10px;background:var(--bg-elev);border:1px solid var(--border);border-radius:10px;color:var(--text)">
         <span style="font-weight:800">–</span>
@@ -1125,6 +1150,49 @@ function renderSetup() {
     </div>`;
 }
 
+/* ---------- Auto-liquidação (admin) ---------- */
+
+/* Ao entrar como admin, tenta liquidar automaticamente, via ESPN, os jogos
+   já terminados que ainda têm mercados por liquidar. Corre em background e
+   é totalmente defensivo: qualquer falha é ignorada (nunca rebenta o boot).
+   O servidor valida tudo (settle_market é idempotente) — nada é pago a dobrar. */
+async function autoSettleFinished() {
+  try {
+    if (!state.profile?.isAdmin) return;
+
+    const games = await espnGames();
+    if (!games?.length) return;
+
+    const [ours, pending] = await Promise.all([API.getMatches(), API.getMatchesToSettle()]);
+    const pendingIds = new Set(pending.map((s) => String(s.id)));
+    const candidates = ours.filter((m) => pendingIds.has(String(m.id)));
+    if (!candidates.length) return;
+
+    let total = 0;
+    for (const m of candidates) {
+      const g = games.find((x) =>
+        x.state === "post" &&
+        pairKey(teamPt(x.teamAEn), teamPt(x.teamBEn)) === pairKey(m.teamA, m.teamB));
+      if (!g) continue;
+      try {
+        const { markets } = await API.getSettleForm(m.id);
+        const plan = computeSettlement(g, markets, m.teamA, m.teamB);
+        if (plan.score) await API.setMatchScore(m.id, plan.score.a, plan.score.b);
+        for (const s of plan.toSettle) {
+          try { await API.settleMarket(s.marketId, s.optionId); total++; } catch { /* já liquidado */ }
+        }
+      } catch { /* segue para o próximo jogo */ }
+    }
+
+    if (total > 0) {
+      state.profile = await API.getMyProfile().catch(() => state.profile);
+      toast(`⚡ Auto-liquidados ${total} mercado(s) terminados`);
+      const route = location.hash.replace(/^#\/?/, "").split("/")[0] || "jogos";
+      if (route === "jogos" || route === "classificacao") await navigate();
+    }
+  } catch { /* ESPN em baixo/bloqueado — sem auto-liquidação desta vez */ }
+}
+
 /* ---------- Arranque + PWA ---------- */
 
 async function boot() {
@@ -1146,6 +1214,7 @@ async function boot() {
   });
 
   await navigate();
+  autoSettleFinished();   // background, só admin
 }
 
 boot();
