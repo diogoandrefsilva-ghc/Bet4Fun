@@ -624,6 +624,7 @@ async function renderApostas() {
       <div class="bet-pick-row">
         <span class="bet-option">${escapeHtml(b.option || b.pick)}</span>
         ${b.market ? `<span class="bet-market">${escapeHtml(b.market)}</span>` : ""}
+        ${b.score ? `<span class="bet-score">🏁 ${b.score}</span>` : ""}
       </div>
       <div class="bet-foot">
         <span class="bet-stake">Aposta 🪙 ${b.stake}</span>
@@ -661,9 +662,10 @@ async function renderClassificacao() {
         </div>
         <div class="lb-chips">
           <span class="amount">🪙 ${p.chips.toLocaleString("pt-PT")}</span>
+          ${p.delta ? `<span class="delta ${p.delta >= 0 ? "delta-up" : "delta-down"}">${p.delta >= 0 ? "▲" : "▼"} ${Math.abs(p.delta).toLocaleString("pt-PT")} recente</span>` : ""}
         </div>
       </div>
-      <div class="lb-history" id="lbh-${p.id}" data-locked="${p.locked || 0}" data-delta="${p.delta || 0}"></div>`).join("") : `<div class="empty"><span class="ico">🏆</span>Ainda sem jogadores na mesa.</div>`}
+      <div class="lb-history" id="lbh-${p.id}" data-locked="${p.isMe ? (p.locked || 0) : 0}"></div>`).join("") : `<div class="empty"><span class="ico">🏆</span>Ainda sem jogadores na mesa.</div>`}
   `);
 }
 
@@ -685,34 +687,36 @@ async function togglePlayerHistory(pid, rowEl) {
   panel.innerHTML = `<div class="reveal-empty">A carregar histórico…</div>`;
   try {
     const h = await API.getPlayerHistory(pid);
-    panel.innerHTML = historyPanelHtml(h, Number(panel.dataset.locked || 0), Number(panel.dataset.delta || 0));
+    panel.innerHTML = historyPanelHtml(h, Number(panel.dataset.locked || 0));
     panel.dataset.loaded = "1";
   } catch (e) {
     panel.innerHTML = `<div class="reveal-empty">❌ ${escapeHtml(e.message)}</div>`;
   }
 }
 
-function historyPanelHtml(h, locked = 0, delta = 0) {
-  // Detalhes que saíram da linha da tabela (para ela respirar): fichas
-  // cativas em apostas por liquidar e a variação recente.
-  const meta = [];
-  if (locked > 0) meta.push(`<span>🔒 🪙 ${locked.toLocaleString("pt-PT")} cativas em apostas por liquidar</span>`);
-  if (delta) meta.push(`<span class="${delta >= 0 ? "up" : "down"}">${delta >= 0 ? "▲" : "▼"} 🪙 ${Math.abs(delta).toLocaleString("pt-PT")} recente</span>`);
-  const metaHtml = meta.length ? `<div class="lbh-meta">${meta.join("")}</div>` : "";
+/* Painel de um jogador na classificação: as apostas resolvidas, no mesmo
+   desenho dos cartões de "As minhas apostas". As fichas cativas só aparecem
+   na tua própria linha — o que cada um tem em jogo é segredo (estratégia). */
+function historyPanelHtml(h, locked = 0) {
+  const metaHtml = locked > 0
+    ? `<div class="lbh-meta">🔒 🪙 ${locked.toLocaleString("pt-PT")} cativas em apostas por liquidar · só tu vês isto</div>`
+    : "";
   if (!h.items.length) return `${metaHtml}<div class="reveal-empty">Ainda sem apostas resolvidas 📜</div>`;
-  const head = `${metaHtml}<div class="lbh-summary">✅ ${h.won} ${h.won === 1 ? "certa" : "certas"} · ❌ ${h.lost} ${h.lost === 1 ? "errada" : "erradas"}</div>`;
-  const rows = h.items.map((it) => `
-    <div class="reveal-line">
-      <div class="lbh-info">
-        <div class="lbh-match">${escapeHtml(it.match)}</div>
-        <div class="lbh-pick">${escapeHtml(it.pick)}</div>
+  const rows = h.items.map((it) => {
+    const status =
+      it.status === "won" ? `<span class="bet-status won">Ganhou +🪙 ${it.payout}</span>` :
+      it.status === "lost" ? `<span class="bet-status lost">Perdeu</span>` :
+      `<span class="bet-status pending">↩️ Reembolso</span>`;
+    return `
+    <div class="lbh-item">
+      <div class="lbh-row1">
+        <span class="lbh-match">${escapeHtml(it.match)}</span>
+        ${status}
       </div>
-      <span class="rl-stake">🪙 ${it.stake}</span>
-      <span class="rl-result ${it.status === "won" ? "won" : it.status === "lost" ? "lost" : ""}">${
-        it.status === "won" ? `ganhou +🪙 ${it.payout}` : it.status === "lost" ? "perdeu" : "↩️ reembolso"
-      }</span>
-    </div>`).join("");
-  return head + rows;
+      <div class="lbh-pick">${escapeHtml(it.pick)} · aposta 🪙 ${it.stake}</div>
+    </div>`;
+  }).join("");
+  return metaHtml + rows;
 }
 
 /* ---------- Ecrã: Perfil ---------- */

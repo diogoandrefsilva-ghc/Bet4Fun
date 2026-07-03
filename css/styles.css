@@ -357,8 +357,14 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
   font-size: 0.72rem; color: var(--text-faint); margin-top: 2px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.lb-chips { text-align: right; }
+.lb-chips {
+  display: flex; flex-direction: column; align-items: flex-end;
+  gap: 2px; text-align: right;
+}
 .lb-chips .amount { font-weight: 800; font-size: 1.05rem; color: var(--accent); white-space: nowrap; }
+.lb-chips .delta { font-size: 0.7rem; font-weight: 800; white-space: nowrap; }
+.delta-up { color: var(--win); }
+.delta-down { color: var(--loss); }
 
 /* histórico de apostas de um jogador (toque na linha da classificação) */
 .lb-history { display: none; }
@@ -371,19 +377,19 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
   animation: fade-in 0.18s ease;
 }
 .lbh-meta {
-  display: flex; flex-wrap: wrap; gap: 4px 14px;
-  font-size: 0.76rem; font-weight: 700; color: var(--text-dim);
-  padding: 10px 0 0;
+  font-size: 0.74rem; font-weight: 700; color: var(--text-dim);
+  background: var(--bg-elev); border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px; margin: 10px 0 4px;
 }
-.lbh-meta .up { color: var(--win); }
-.lbh-meta .down { color: var(--loss); }
-.lbh-summary {
-  font-size: 0.78rem; font-weight: 800; color: var(--text-dim);
-  padding: 8px 0 4px;
+.lbh-item { padding: 10px 0; border-bottom: 1px solid var(--border); }
+.lbh-item:last-child { border-bottom: none; padding-bottom: 6px; }
+.lbh-row1 { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.lbh-match {
+  font-size: 0.84rem; font-weight: 700; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.lbh-info { flex: 1; min-width: 0; }
-.lbh-match { font-size: 0.82rem; font-weight: 700; }
-.lbh-pick { font-size: 0.72rem; color: var(--text-faint); margin-top: 1px; }
+.lbh-pick { font-size: 0.74rem; color: var(--text-faint); margin-top: 3px; }
 
 .crown { font-size: 0.9rem; }
 
@@ -443,6 +449,7 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 }
 .bet-option { font-weight: 800; font-size: 1.02rem; }
 .bet-market { font-size: 0.76rem; color: var(--text-dim); font-weight: 600; }
+.bet-score { margin-left: auto; font-weight: 800; font-size: 0.86rem; white-space: nowrap; }
 .bet-foot {
   display: flex; justify-content: space-between; align-items: center; gap: 10px;
   margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);

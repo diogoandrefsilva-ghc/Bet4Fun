@@ -349,7 +349,7 @@ const liveAPI = {
 
     const { data: bets, error } = await supabase
       .from("bets")
-      .select("id,stake,option_id,market_id,market_options(label),markets(name,status,winning_option_id,closes_at,matches(team_a,flag_a,team_b,flag_b,kickoff_at))")
+      .select("id,stake,option_id,market_id,market_options(label),markets(name,status,winning_option_id,closes_at,matches(team_a,flag_a,team_b,flag_b,kickoff_at,score_a,score_b))")
       .eq("profile_id", uid)
       .order("created_at", { ascending: false });
     if (error) throwErr(error, "Não consegui carregar as tuas apostas");
@@ -373,6 +373,7 @@ const liveAPI = {
         market: mk.name ?? "",
         option: b.market_options?.label ?? "",
         pick: `${mk.name ?? ""} · ${b.market_options?.label ?? ""}`,
+        score: (mt.score_a != null && mt.score_b != null) ? `${mt.score_a}–${mt.score_b}` : null,
         stake: b.stake,
         secret: !closed,
       };
@@ -434,7 +435,7 @@ const liveAPI = {
   async getPlayerHistory(profileId) {
     const { data: bets, error } = await supabase
       .from("bets")
-      .select("stake,option_id,market_id,created_at,market_options(label),markets(name,status,winning_option_id,matches(team_a,flag_a,team_b,flag_b,kickoff_at))")
+      .select("stake,option_id,market_id,created_at,market_options(label),markets(name,status,winning_option_id,matches(team_a,flag_a,team_b,flag_b,kickoff_at,score_a,score_b))")
       .eq("profile_id", profileId)
       .order("created_at", { ascending: false });
     if (error) throwErr(error, "Não consegui carregar o histórico");
@@ -463,8 +464,10 @@ const liveAPI = {
       } else {
         lost++;
       }
+      // com o jogo terminado mostra o resultado no lugar do "vs" (compacto)
+      const mid = (mt.score_a != null && mt.score_b != null) ? `${mt.score_a}–${mt.score_b}` : "vs";
       return {
-        match: mt.team_a ? `${mt.flag_a || ""} ${mt.team_a} vs ${mt.team_b} ${mt.flag_b || ""}` : (mk.name || ""),
+        match: mt.team_a ? `${mt.flag_a || ""} ${mt.team_a} ${mid} ${mt.team_b} ${mt.flag_b || ""}` : (mk.name || ""),
         pick: `${mk.name ?? ""} · ${b.market_options?.label ?? ""}`,
         stake: b.stake, status, payout,
       };

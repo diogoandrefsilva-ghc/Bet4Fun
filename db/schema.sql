@@ -221,12 +221,15 @@ CREATE OR REPLACE VIEW bet4fun.match_pots AS
 --   O delta recente ignora o vai-e-vem do cativo (bet/refund) — só conta
 --   ganhos realizados (payout/bailout/admin_adjust) para não "afundar" a
 --   tabela quando alguém aposta.
+--   O `locked` é PRIVADO: só o próprio vê o seu cativo (o que cada um tem
+--   em jogo é estratégia); para os outros devolve 0.
 CREATE OR REPLACE VIEW bet4fun.leaderboard AS
   SELECT p.id, p.display_name, p.avatar_emoji,
          (COALESCE(bal.chips, 0) + COALESCE(lk.locked, 0)) AS chips,
          COALESCE(d.delta, 0)                              AS delta,
          COALESCE(bg.codes, '{}'::text[])                  AS badge_codes,
-         COALESCE(lk.locked, 0)                            AS locked
+         CASE WHEN p.id = auth.uid()
+              THEN COALESCE(lk.locked, 0) ELSE 0 END       AS locked
   FROM bet4fun.profiles p
   LEFT JOIN bet4fun.balances bal ON bal.profile_id = p.id
   LEFT JOIN (
