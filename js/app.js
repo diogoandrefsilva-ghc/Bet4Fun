@@ -658,7 +658,7 @@ async function renderClassificacao() {
       <span>As fichas apostadas em eventos por liquidar ficam <strong>cativas</strong> — contam para o teu valor na tabela até o evento ser liquidado.</span>
     </div>
     ${players.length ? players.map((p, i) => `
-      <div class="lb-row ${i === 0 ? "king" : ""} ${p.isMe ? "me" : ""}">
+      <div class="lb-row ${i === 0 ? "king" : ""} ${p.isMe ? "me" : ""}" onclick="togglePlayerHistory('${p.id}', this)">
         <span class="lb-rank">${i === 0 ? "👑" : i + 1}</span>
         <span class="lb-avatar">${p.avatar}</span>
         <div class="lb-info">
@@ -670,8 +670,51 @@ async function renderClassificacao() {
           ${p.locked > 0 ? `<span class="lb-locked">🔒 ${p.locked.toLocaleString("pt-PT")} cativas</span>` : ""}
           ${p.delta ? `<span class="delta ${p.delta >= 0 ? "delta-up" : "delta-down"}">${p.delta >= 0 ? "▲" : "▼"} ${Math.abs(p.delta)} recente</span>` : ""}
         </div>
-      </div>`).join("") : `<div class="empty"><span class="ico">🏆</span>Ainda sem jogadores na mesa.</div>`}
+      </div>
+      <div class="lb-history" id="lbh-${p.id}"></div>`).join("") : `<div class="empty"><span class="ico">🏆</span>Ainda sem jogadores na mesa.</div>`}
   `);
+}
+
+/* Toca num jogador na classificação → mostra/esconde o histórico de apostas
+   certas e erradas. Carrega à primeira abertura (e guarda em cache). */
+async function togglePlayerHistory(pid, rowEl) {
+  const panel = document.getElementById(`lbh-${pid}`);
+  if (!panel) return;
+  const wasOpen = panel.classList.contains("open");
+
+  document.querySelectorAll(".lb-history.open").forEach((p) => p.classList.remove("open"));
+  document.querySelectorAll(".lb-row.expanded").forEach((r) => r.classList.remove("expanded"));
+  if (wasOpen) return;   // era este que estava aberto → fica fechado
+
+  rowEl.classList.add("expanded");
+  panel.classList.add("open");
+  if (panel.dataset.loaded) return;
+
+  panel.innerHTML = `<div class="reveal-empty">A carregar histórico…</div>`;
+  try {
+    const h = await API.getPlayerHistory(pid);
+    panel.innerHTML = historyPanelHtml(h);
+    panel.dataset.loaded = "1";
+  } catch (e) {
+    panel.innerHTML = `<div class="reveal-empty">❌ ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function historyPanelHtml(h) {
+  if (!h.items.length) return `<div class="reveal-empty">Ainda sem apostas resolvidas 📜</div>`;
+  const head = `<div class="lbh-summary">✅ ${h.won} ${h.won === 1 ? "certa" : "certas"} · ❌ ${h.lost} ${h.lost === 1 ? "errada" : "erradas"}</div>`;
+  const rows = h.items.map((it) => `
+    <div class="reveal-line">
+      <div class="lbh-info">
+        <div class="lbh-match">${escapeHtml(it.match)}</div>
+        <div class="lbh-pick">${escapeHtml(it.pick)}</div>
+      </div>
+      <span class="rl-stake">🪙 ${it.stake}</span>
+      <span class="rl-result ${it.status === "won" ? "won" : it.status === "lost" ? "lost" : ""}">${
+        it.status === "won" ? `ganhou +🪙 ${it.payout}` : it.status === "lost" ? "perdeu" : "↩️ reembolso"
+      }</span>
+    </div>`).join("");
+  return head + rows;
 }
 
 /* ---------- Ecrã: Perfil ---------- */
@@ -1269,6 +1312,7 @@ Object.assign(window, {
   doLogin, doLogout, refreshPending,
   openSlip, closeSlip, setStake, confirmBet,
   toggleReveal, trocarPalpite,
+  togglePlayerHistory,
   doBailout,
   approvePlayer, approveBailout,
   saveScore, pickWinner, voidMarket,

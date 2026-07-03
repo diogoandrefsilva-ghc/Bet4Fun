@@ -426,6 +426,50 @@ const liveAPI = {
     return { total, won, winRate };
   },
 
+  // Histórico de apostas resolvidas de um jogador (para tocar na classificação).
+  // As apostas alheias em mercados já fechados são públicas (RLS); o ganho é
+  // recalculado pelo pool betting (não lê transações alheias).
+  async getPlayerHistory(profileId) {
+    const { data: bets, error } = await supabase
+      .from("bets")
+      .select("stake,option_id,market_id,created_at,market_options(label),markets(name,status,winning_option_id,matches(team_a,flag_a,team_b,flag_b,kickoff_at))")
+      .eq("profile_id", profileId)
+      .order("created_at", { ascending: false });
+    if (error) throwErr(error, "Não consegui carregar o histórico");
+
+    const settled = (bets || []).filter((b) => b.markets?.status === "settled");
+    const ids = [...new Set(settled.map((b) => b.market_id))];
+    const potMap = {}, poolMap = {};
+    if (ids.length) {
+      const { data: totals } = await supabase.from("market_totals").select("*").in("market_id", ids);
+      (totals || []).forEach((t) => { potMap[t.market_id] = t.pot; });
+      const { data: pools } = await supabase.from("market_pools").select("*").in("market_id", ids);
+      (pools || []).forEach((p) => { poolMap[`${p.market_id}:${p.option_id}`] = p.pool; });
+    }
+
+    let won = 0, lost = 0;
+    const items = settled.map((b) => {
+      const mk = b.markets || {};
+      const mt = mk.matches || {};
+      const pot = potMap[b.market_id] || 0;
+      const winnerPool = poolMap[`${b.market_id}:${mk.winning_option_id}`] || 0;
+      let status = "lost", payout = 0;
+      if (winnerPool === 0) {
+        status = "refund";                                   // ninguém acertou → reembolso
+      } else if (String(b.option_id) === String(mk.winning_option_id)) {
+        status = "won"; won++; payout = Math.floor(pot * b.stake / winnerPool);
+      } else {
+        lost++;
+      }
+      return {
+        match: mt.team_a ? `${mt.flag_a || ""} ${mt.team_a} vs ${mt.team_b} ${mt.flag_b || ""}` : (mk.name || ""),
+        pick: `${mk.name ?? ""} · ${b.market_options?.label ?? ""}`,
+        stake: b.stake, status, payout,
+      };
+    });
+    return { items, won, lost };
+  },
+
   async requestBailout(note) {
     const { error } = await supabase.rpc("request_bailout", { p_note: note || null });
     if (error) throwErr(error, "Não foi possível pedir o resgate");

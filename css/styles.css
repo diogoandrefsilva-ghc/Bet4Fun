@@ -326,7 +326,9 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
   border: 1px solid var(--border);
   border-radius: var(--radius);
   margin-bottom: 8px;
+  cursor: pointer;
 }
+.lb-row.expanded { margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 .lb-row.me { border-color: var(--pitch); }
 .lb-row.king {
   background: linear-gradient(135deg, var(--accent-soft), var(--bg-card) 60%);
@@ -347,6 +349,24 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 .lb-chips .lb-locked { font-size: 0.7rem; font-weight: 700; color: var(--text-faint); display: block; }
 .delta-up { color: var(--win); }
 .delta-down { color: var(--loss); }
+
+/* histórico de apostas de um jogador (toque na linha da classificação) */
+.lb-history { display: none; }
+.lb-history.open {
+  display: block; margin: -8px 0 8px;
+  padding: 4px 14px 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border); border-top: none;
+  border-bottom-left-radius: var(--radius); border-bottom-right-radius: var(--radius);
+  animation: fade-in 0.18s ease;
+}
+.lbh-summary {
+  font-size: 0.78rem; font-weight: 800; color: var(--text-dim);
+  padding: 8px 0 4px;
+}
+.lbh-info { flex: 1; min-width: 0; }
+.lbh-match { font-size: 0.82rem; font-weight: 700; }
+.lbh-pick { font-size: 0.72rem; color: var(--text-faint); margin-top: 1px; }
 
 .crown { font-size: 0.9rem; }
 
