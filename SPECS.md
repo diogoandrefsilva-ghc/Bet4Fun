@@ -101,8 +101,18 @@ badges (
 )
 
 settings (
-  key text PK,                         -- 'initial_chips'=1000, 'bailout_chips'=200, 'min_stake'=5
-  value jsonb
+  key text PK,                         -- 'initial_chips'=1000, 'bailout_chips'=200, 'min_stake'=5,
+  value jsonb                          --   'min_match_stake'=100 (mínimo obrigatório por jogo; o resto expira)
+)
+
+-- Fichas expiradas por jogo (aposta mínima obrigatória não cumprida)
+chip_expiries (
+  id bigint PK,
+  match_id bigint REFERENCES matches,
+  profile_id uuid REFERENCES profiles,
+  amount int NOT NULL CHECK (amount > 0),   -- fichas que expiraram (débito no ledger, kind='expiry')
+  created_at timestamptz DEFAULT now(),
+  UNIQUE (match_id, profile_id)
 )
 ```
 
@@ -176,6 +186,24 @@ marcar market.status='settled', winning_option_id
 ```
 - Idempotente: liquidar um mercado já `settled` não faz nada.
 - `void_market(market_id)`: jogo cancelado/adiado → reembolso total.
+- Ao liquidar chama `expire_match_shortfalls(match_id)` (ver 4.6) — as fichas em falta expiram.
+
+### 4.5.b `expire_match_shortfalls(match_id)` — aposta mínima obrigatória por jogo
+Para ninguém "adormecer" no topo da tabela sem arriscar, cada jogador é obrigado a apostar
+no mínimo `settings('min_match_stake')` (por defeito **100**) em cada jogo. O que não apostar
+**expira** — sai do saldo e não volta.
+```
+para cada jogador aprovado (que já cá estava ao apito):
+  em_falta = max(0, min_match_stake - total_apostado_no_jogo)
+  a_expirar = min(em_falta, saldo_gastável)     ← nunca deixa o saldo negativo
+  se a_expirar > 0:
+    inserir chip_expiries(match_id, profile_id, a_expirar)   (1 por par, idempotente)
+    inserir transação kind='expiry' com -a_expirar
+```
+- Corre **quando o jogo liquida** (chamada pelo `settle_market`; nessa altura o apito já soou e
+  o total apostado no jogo está fechado). Idempotente via `UNIQUE (match_id, profile_id)`.
+- As fichas expiradas aparecem no **detalhe do jogo** (`#/jogo/:id`) à vista de todos — é para picar.
+  Antes de o jogo liquidar, o detalhe mostra a expiração **projetada** (quem apostou < mínimo).
 
 ### 4.4 `request_bailout(note)` / `approve_bailout(request_id)` — aprovação só admin
 - Só pode pedir se saldo < `min_stake` e não tem pedido `pending`;
@@ -227,7 +255,7 @@ Checklist de batota a testar (o "primo QA"):
 |---|---|---|
 | Login | `renderLogin()` | `signInWithOAuth('google')`; estado de sessão via `onAuthStateChange` |
 | Jogos `#/jogos` | `renderJogos()` | `matches` + `market_pools` agregado por jogo; secção futures = `markets WHERE match_id IS NULL` |
-| Detalhe `#/jogo/:id` | `renderJogoDetalhe()` | mercados+opções+pools; se `now()>=closes_at` mostra **livro aberto** (`bets` reveladas com nome/avatar) |
+| Detalhe `#/jogo/:id` | `renderJogoDetalhe()` | mercados+opções+pools; se `now()>=closes_at` mostra **livro aberto** (`bets` reveladas com nome/avatar). Nos mercados liquidados, cada apostador mostra **quanto ganhou** (pool betting, calculado no cliente). Secção **Fichas expiradas** = `chip_expiries` (reais) ou projeção do que falta ao mínimo por jogo |
 | Boletim (slip) | `openSlip()/confirmBet()` | RPC `place_bet`; mostrar projeção `≈ pote_total * stake / (pool_opção + stake)` |
 | Apostas `#/apostas` | `renderApostas()` | `bets` próprias join mercados/jogos; estado won/lost via `winning_option_id` |
 | Classificação `#/classificacao` | `renderClassificacao()` | view leaderboard; realtime opcional (Supabase Realtime em `transactions`) |

@@ -625,7 +625,10 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 }
 .reveal-line:first-child { border-top: none; }
 .reveal-line .rl-who { flex: 1; font-weight: 700; }
-.reveal-line .rl-stake { color: var(--accent); font-weight: 800; }
+.reveal-line .rl-stake { color: var(--accent); font-weight: 800; white-space: nowrap; }
+.reveal-line .rl-result { font-weight: 800; font-size: 0.8rem; white-space: nowrap; color: var(--text-faint); }
+.reveal-line .rl-result.won { color: var(--win); }
+.reveal-line .rl-result.lost { color: var(--loss); }
 .reveal-empty { padding: 10px 4px; color: var(--text-faint); font-size: 0.84rem; text-align: center; }
 .lb-avatar.sm { width: 28px; height: 28px; font-size: 0.95rem; }
 

@@ -335,9 +335,40 @@ async function renderJogoDetalhe(matchId, opts = {}) {
     ${matchCard(m)}
     ${banner}
     ${detail.markets.length ? groups : `<div class="empty"><span class="ico">🃏</span>Sem mercados para este jogo.</div>`}
+    ${phase !== "open" ? expiriesSection(detail) : ""}
   `);
 
   if (phase === "live") patchLive(m);
+}
+
+/* Secção "Fichas expiradas": a aposta mínima obrigatória por jogo (o resto
+   expira). Depois do apito mostra quem ficou abaixo do mínimo — projetado
+   enquanto o jogo não liquida, real (já debitado) depois de liquidar. */
+function expiriesSection(detail) {
+  const min = detail.minMatchStake || 0;
+  if (!min) return "";
+  const list = detail.expiries || [];
+  const body = list.length
+    ? list.map((e) => `
+        <div class="reveal-line">
+          <span class="lb-avatar sm">${e.avatar}</span>
+          <span class="rl-who">${escapeHtml(e.who)}</span>
+          <span class="rl-stake">apostou 🪙 ${e.staked}</span>
+          <span class="rl-result lost">${e.expired ? "expirou" : "vai expirar"} 🪙 ${e.amount}</span>
+        </div>`).join("")
+    : `<div class="reveal-empty">Toda a gente cumpriu o mínimo de 🪙 ${min} 🎯</div>`;
+  return `
+    <div class="market-group">
+      <div class="risk-header">
+        <span class="risk-dot" style="background:var(--loss)"></span>
+        <span class="risk-name">Fichas expiradas</span>
+        <span class="risk-sub">· mínimo 🪙 ${min} por jogo</span>
+      </div>
+      <div class="card">
+        <div class="market-note" style="margin-top:0">ℹ️ Quem não apostar pelo menos 🪙 ${min} neste jogo perde o que faltar — para ninguém adormecer no topo da tabela.</div>
+        ${body}
+      </div>
+    </div>`;
 }
 
 /* Um cartão de mercado. Comportamento depende da fase:
@@ -435,9 +466,19 @@ function toggleReveal(marketId, optionId, btn) {
           <span class="lb-avatar sm">${r.avatar}</span>
           <span class="rl-who">${escapeHtml(r.who)}</span>
           <span class="rl-stake">🪙 ${r.stake}</span>
+          ${revealResult(r.result)}
         </div>`).join("")
     : `<div class="reveal-empty">Ninguém apostou nesta opção 🦗</div>`;
   panel.classList.add("open");
+}
+
+/* Etiqueta do resultado de um apostador num mercado já liquidado. */
+function revealResult(res) {
+  if (!res) return "";
+  if (res.kind === "won") return `<span class="rl-result won">ganhou +🪙 ${res.amount}</span>`;
+  if (res.kind === "refund") return `<span class="rl-result">↩️ reembolso</span>`;
+  if (res.kind === "lost") return `<span class="rl-result lost">perdeu</span>`;
+  return "";
 }
 
 /* Desbloqueia um mercado já apostado para trocar o palpite (antes do apito). */

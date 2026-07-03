@@ -20,8 +20,9 @@ Corre no SQL Editor do Supabase, **por esta ordem**:
 
 1. **`schema.sql`** — schema `bet4fun`, tabelas (+ RLS ativa), views (agregados) e seed dos settings.
 2. **`functions.sql`** — helpers (`is_admin`, `app_setting_int`), RPCs (`place_bet`, `settle_market`,
-   `void_market`, `request_bailout`, `approve_bailout`, `approve_player`, `create_match_with_markets`,
-   `set_match_result`, `refresh_badges`, `ensure_profile`) e o trigger que congela colunas privilegiadas.
+   `expire_match_shortfalls`, `void_market`, `request_bailout`, `approve_bailout`, `approve_player`,
+   `create_match_with_markets`, `set_match_result`, `refresh_badges`, `ensure_profile`) e o trigger
+   que congela colunas privilegiadas.
    A inscrição de perfis é feita pela RPC `ensure_profile()` (chamada pela app), **não** por trigger em
    `auth.users` — essa tabela é partilhada por várias apps do projeto.
 3. **`policies.sql`** — RLS policies + grants.
@@ -53,8 +54,19 @@ com *"function ... does not exist"*.
 ## Definições (tabela `settings`)
 
 `initial_chips` (1000) · `bailout_chips` (200) · `min_stake` (5) ·
-`show_pools_before_kickoff` (true) · `admin_email`.
+`min_match_stake` (100) · `show_pools_before_kickoff` (true) · `admin_email`.
 Ex.: `update bet4fun.settings set value='1500'::jsonb where key='initial_chips';`
+
+`min_match_stake` é a **aposta mínima obrigatória por jogo**: quem não apostar pelo menos essas
+fichas num jogo vê o que faltar **expirar** (débito `kind='expiry'` + linha em `chip_expiries`)
+quando o jogo é liquidado. Põe `0` para desligar a regra.
+
+## Migrações (BD já existente)
+
+Para aplicar mudanças numa BD que já tem dados, corre os ficheiros de `db/migrations/` por data.
+A mais recente — **`2026-07-03_minimo_por_jogo_expiracao.sql`** — cria a `chip_expiries`, o setting
+`min_match_stake`, o `kind='expiry'` no ledger e a RPC `expire_match_shortfalls` (chamada pelo
+`settle_market`). É idempotente. Numa BD limpa não é preciso: já vem tudo em `schema.sql`+`functions.sql`.
 
 ## Nota sobre IDs
 

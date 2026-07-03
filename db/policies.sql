@@ -70,6 +70,22 @@ CREATE POLICY bets_select ON bet4fun.bets
   );
 
 -- ---------------------------------------------------------------------
+-- chip_expiries: as minhas sempre; admin tudo; as dos outros só depois do
+-- apito (como as apostas). Na prática só existem depois da liquidação, mas
+-- a política acompanha o "segredo até ao apito" por coerência. Sem escrita
+-- (materializadas só via expire_match_shortfalls / settle_market).
+-- ---------------------------------------------------------------------
+DROP POLICY IF EXISTS expiries_select ON bet4fun.chip_expiries;
+CREATE POLICY expiries_select ON bet4fun.chip_expiries
+  FOR SELECT TO authenticated
+  USING (
+    profile_id = auth.uid()
+    OR bet4fun.is_admin()
+    OR EXISTS (SELECT 1 FROM bet4fun.matches mt
+               WHERE mt.id = chip_expiries.match_id AND now() >= mt.kickoff_at)
+  );
+
+-- ---------------------------------------------------------------------
 -- bailout_requests: as minhas (ou admin). INSERT só via request_bailout().
 -- ---------------------------------------------------------------------
 DROP POLICY IF EXISTS bailout_select ON bet4fun.bailout_requests;

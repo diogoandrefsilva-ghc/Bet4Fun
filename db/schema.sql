@@ -29,7 +29,7 @@ CREATE TABLE bet4fun.profiles (
 
 -- ---------------------------------------------------------------------
 -- Configuração global (key-value)
---   initial_chips · bailout_chips · min_stake ·
+--   initial_chips · bailout_chips · min_stake · min_match_stake ·
 --   show_pools_before_kickoff · admin_email
 -- ---------------------------------------------------------------------
 CREATE TABLE bet4fun.settings (
@@ -42,6 +42,7 @@ INSERT INTO bet4fun.settings (key, value) VALUES
   ('initial_chips',             '1000'::jsonb),
   ('bailout_chips',             '200'::jsonb),
   ('min_stake',                 '5'::jsonb),
+  ('min_match_stake',           '100'::jsonb),   -- aposta mínima obrigatória por jogo (o resto expira; 0 desliga)
   ('show_pools_before_kickoff', 'true'::jsonb),
   ('admin_email',               '"diogo.andre.f.silva@gmail.com"'::jsonb)   -- <<< TROCA se preciso
 ON CONFLICT (key) DO NOTHING;
@@ -58,7 +59,7 @@ CREATE TABLE bet4fun.transactions (
   ref_bet_id bigint,
   created_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT transactions_pkey PRIMARY KEY (id),
-  CONSTRAINT transactions_kind_check CHECK (kind IN ('initial','bet','payout','refund','bailout','admin_adjust'))
+  CONSTRAINT transactions_kind_check CHECK (kind IN ('initial','bet','payout','refund','bailout','admin_adjust','expiry'))
 );
 CREATE INDEX idx_tx_profile ON bet4fun.transactions (profile_id);
 
@@ -123,6 +124,23 @@ CREATE TABLE bet4fun.bets (
 CREATE INDEX idx_bets_market ON bet4fun.bets (market_id);
 
 -- ---------------------------------------------------------------------
+-- Fichas expiradas por jogo. Cada jogador é obrigado a apostar no mínimo
+-- settings('min_match_stake') fichas em cada jogo; o que faltar EXPIRA
+-- quando o jogo é liquidado (débito no ledger + linha aqui). 1 por par.
+-- ---------------------------------------------------------------------
+CREATE TABLE bet4fun.chip_expiries (
+  id         bigint GENERATED ALWAYS AS IDENTITY,
+  match_id   bigint NOT NULL REFERENCES bet4fun.matches ON DELETE CASCADE,
+  profile_id uuid   NOT NULL REFERENCES bet4fun.profiles ON DELETE CASCADE,
+  amount     int    NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT chip_expiries_pkey PRIMARY KEY (id),
+  CONSTRAINT chip_expiries_amount_check CHECK (amount > 0),
+  CONSTRAINT chip_expiries_unique UNIQUE (match_id, profile_id)
+);
+CREATE INDEX idx_expiries_match ON bet4fun.chip_expiries (match_id);
+
+-- ---------------------------------------------------------------------
 -- Pedidos de resgate (bailout)
 -- ---------------------------------------------------------------------
 CREATE TABLE bet4fun.bailout_requests (
@@ -157,6 +175,7 @@ ALTER TABLE bet4fun.matches          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bet4fun.markets          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bet4fun.market_options   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bet4fun.bets             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE bet4fun.chip_expiries    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bet4fun.bailout_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bet4fun.badges           ENABLE ROW LEVEL SECURITY;
 

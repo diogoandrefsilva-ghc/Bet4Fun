@@ -53,6 +53,42 @@ function throwErr(error, fallback) {
   throw new Error(msg);
 }
 
+/* Enriquece as linhas do livro de um mercado LIQUIDADO com o que cada um
+   ganhou (pool betting — igual ao settle_market do SQL):
+     vencedores → floor(pote * stake / pote_vencedor)  (resto p/ o maior)
+     ninguém no vencedor → reembolso a todos
+   Anexa line.result = {kind:'won',amount} | {kind:'lost'} | {kind:'refund'}. */
+function enrichBookWithWinnings(mk, book) {
+  if (mk.status !== "settled") return;
+  const W = mk.winnerOptionId;
+  const pot = mk.pot;
+  const winnerPool = W ? (mk.options.find((o) => String(o.id) === String(W))?.pool || 0) : 0;
+
+  if (pot > 0 && winnerPool > 0) {
+    const winners = [];
+    mk.options.forEach((o) => {
+      (book[`${mk.id}:${o.id}`] || []).forEach((line) => {
+        if (String(o.id) === String(W)) {
+          line.result = { kind: "won", amount: Math.floor(pot * line.stake / winnerPool) };
+          winners.push(line);
+        } else {
+          line.result = { kind: "lost" };
+        }
+      });
+    });
+    // resto de arredondamento → maior apostador vencedor (como no SQL)
+    const remainder = pot - winners.reduce((a, l) => a + l.result.amount, 0);
+    if (remainder > 0 && winners.length) {
+      winners.reduce((a, b) => (b.stake > a.stake ? b : a)).result.amount += remainder;
+    }
+  } else {
+    // ninguém acertou (ou pote vazio) → reembolso a todos os apostadores
+    mk.options.forEach((o) => {
+      (book[`${mk.id}:${o.id}`] || []).forEach((line) => { line.result = { kind: "refund" }; });
+    });
+  }
+}
+
 /* ============================================================
    Supabase — camada de dados real
    ============================================================ */
@@ -246,23 +282,56 @@ const liveAPI = {
     // Livro aberto (só depois do apito; a RLS garante 0 linhas antes).
     // Agrupado por opção: { "marketId:optionId": [ {who, avatar, stake}, ... ] }
     const book = {};
+    const stakeByProfile = {};   // profileId → { who, avatar, staked } (total no jogo)
     if (!open && mkIds.length) {
       const { data: bets } = await supabase
         .from("bets")
-        .select("stake,market_id,option_id,profiles(display_name,avatar_emoji)")
+        .select("stake,market_id,option_id,profile_id,profiles(display_name,avatar_emoji)")
         .in("market_id", mkIds);
       (bets || []).forEach((b) => {
+        const who = b.profiles?.display_name || "?";
+        const avatar = b.profiles?.avatar_emoji || "⚽";
         const key = `${b.market_id}:${b.option_id}`;
-        (book[key] || (book[key] = [])).push({
-          who: b.profiles?.display_name || "?",
-          avatar: b.profiles?.avatar_emoji || "⚽",
-          stake: b.stake,
-        });
+        (book[key] || (book[key] = [])).push({ who, avatar, stake: b.stake });
+        const acc = stakeByProfile[b.profile_id] || (stakeByProfile[b.profile_id] = { who, avatar, staked: 0 });
+        acc.staked += b.stake;
       });
       Object.values(book).forEach((arr) => arr.sort((x, y) => y.stake - x.stake));
+      // Quanto é que cada um ganhou (pool betting) — só nos mercados liquidados.
+      marketsOut.forEach((mk) => enrichBookWithWinnings(mk, book));
     }
 
-    return { match, open, markets: marketsOut, book };
+    // Fichas expiradas por jogo (aposta mínima obrigatória). Só depois do apito.
+    //   reais   → tabela chip_expiries (débito já feito na liquidação)
+    //   projetadas → quem apostou < mínimo mas o jogo ainda não liquidou
+    let expiries = [];
+    const settings = await this._settingsMap();
+    const minMatch = Number(settings.min_match_stake ?? 100);
+    if (!open && mkIds.length) {
+      if (minMatch > 0) {
+        const kickoffMs = new Date(m.kickoff_at).getTime();
+        const { data: players } = await supabase
+          .from("profiles").select("id,display_name,avatar_emoji,created_at").eq("is_approved", true);
+        const { data: realRows } = await supabase
+          .from("chip_expiries").select("profile_id,amount").eq("match_id", matchId);
+        const realMap = {}; (realRows || []).forEach((e) => { realMap[e.profile_id] = e.amount; });
+        expiries = (players || [])
+          .filter((p) => new Date(p.created_at).getTime() <= kickoffMs)   // já cá estava ao apito
+          .map((p) => {
+            const staked = stakeByProfile[p.id]?.staked || 0;
+            const real = realMap[p.id] ?? null;
+            const amount = real != null ? real : Math.max(0, minMatch - staked);
+            return {
+              who: p.display_name, avatar: p.avatar_emoji || "⚽",
+              staked, amount, expired: real != null,
+            };
+          })
+          .filter((e) => e.amount > 0)
+          .sort((a, b) => b.amount - a.amount);
+      }
+    }
+
+    return { match, open, markets: marketsOut, book, expiries, minMatchStake: minMatch };
   },
 
   /* ----- Apostar ----- */
