@@ -1290,6 +1290,12 @@ async function boot() {
   } catch (e) { renderError(e); return; }
 
   API.onAuthChange(async (session) => {
+    // O Supabase dispara INITIAL_SESSION ao subscrever e TOKEN_REFRESHED
+    // periodicamente — ambos com o mesmo utilizador que o boot() já tratou.
+    // Só re-navegar quando o utilizador muda de facto (login/logout), senão
+    // fazíamos um segundo render completo à chegada (o ecrã "piscava").
+    const newUid = session?.user?.id || null;
+    if (newUid === (state.session?.user?.id || null)) return;
     state.session = session;
     state.profile = session
       ? await API.ensureProfile().then(() => API.getMyProfile()).catch(() => null)
