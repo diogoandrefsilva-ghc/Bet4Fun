@@ -357,15 +357,8 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
   font-size: 0.72rem; color: var(--text-faint); margin-top: 2px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.lb-chips {
-  display: flex; flex-direction: column; align-items: flex-end;
-  gap: 1px; line-height: 1.25; text-align: right;
-}
+.lb-chips { text-align: right; }
 .lb-chips .amount { font-weight: 800; font-size: 1.05rem; color: var(--accent); white-space: nowrap; }
-.lb-chips .delta { font-size: 0.72rem; font-weight: 700; white-space: nowrap; }
-.lb-chips .lb-locked { font-size: 0.7rem; font-weight: 700; color: var(--text-faint); white-space: nowrap; }
-.delta-up { color: var(--win); }
-.delta-down { color: var(--loss); }
 
 /* histórico de apostas de um jogador (toque na linha da classificação) */
 .lb-history { display: none; }
@@ -377,6 +370,13 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
   border-bottom-left-radius: var(--radius); border-bottom-right-radius: var(--radius);
   animation: fade-in 0.18s ease;
 }
+.lbh-meta {
+  display: flex; flex-wrap: wrap; gap: 4px 14px;
+  font-size: 0.76rem; font-weight: 700; color: var(--text-dim);
+  padding: 10px 0 0;
+}
+.lbh-meta .up { color: var(--win); }
+.lbh-meta .down { color: var(--loss); }
 .lbh-summary {
   font-size: 0.78rem; font-weight: 800; color: var(--text-dim);
   padding: 8px 0 4px;
@@ -433,21 +433,29 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 .rules .t strong { color: var(--text); }
 
 /* ---------- As minhas apostas ---------- */
-.bet-row {
-  display: flex; justify-content: space-between; align-items: center; gap: 10px;
-  padding: 12px 14px;
-  background: var(--bg-card); border: 1px solid var(--border);
-  border-radius: var(--radius); margin-bottom: 8px;
-}
-.bet-info { flex: 1; min-width: 0; }
 .bet-match { font-size: 0.78rem; color: var(--text-faint); }
-.bet-pick { font-weight: 700; font-size: 0.92rem; margin-top: 2px; }
-.bet-stake { text-align: right; font-weight: 800; }
-.bet-result { font-size: 0.72rem; font-weight: 700; display: block; }
-.bet-result.won { color: var(--win); }
-.bet-result.lost { color: var(--loss); }
-.bet-result.pending { color: var(--text-faint); }
-.bet-secret { font-size: 0.72rem; color: var(--text-faint); }
+
+.bet-card { padding: 12px 14px; margin-bottom: 8px; }
+.bet-card .bet-match { font-weight: 600; }
+.bet-pick-row {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  margin-top: 4px;
+}
+.bet-option { font-weight: 800; font-size: 1.02rem; }
+.bet-market { font-size: 0.76rem; color: var(--text-dim); font-weight: 600; }
+.bet-foot {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
+}
+.bet-stake { font-size: 0.84rem; font-weight: 700; color: var(--text-dim); }
+.bet-status {
+  font-size: 0.72rem; font-weight: 800; letter-spacing: 0.02em;
+  padding: 4px 10px; border-radius: 999px; white-space: nowrap;
+}
+.bet-status.won { background: var(--pitch-soft); color: var(--win); }
+.bet-status.lost { background: rgba(224, 72, 60, 0.10); color: var(--loss); }
+.bet-status.pending { background: var(--bg-elev); color: var(--text-dim); border: 1px solid var(--border); }
+.bet-status.secret { background: var(--mine-soft); color: var(--mine); }
 
 /* ---------- Livro aberto (reveal) ---------- */
 .reveal-row {
@@ -462,14 +470,41 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 
 /* ---------- Admin ---------- */
 .admin-item { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-.admin-item .desc { flex: 1; }
+.admin-item .desc { flex: 1; min-width: 0; }
 .admin-item .desc .t { font-weight: 700; font-size: 0.92rem; }
 .admin-item .desc .s { font-size: 0.78rem; color: var(--text-faint); margin-top: 2px; }
+button.admin-item { width: 100%; text-align: left; }
+.admin-item .chev { color: var(--text-faint); font-size: 1.4rem; font-weight: 700; line-height: 1; flex-shrink: 0; }
 .btn-small {
   background: var(--pitch); color: #05130b; font-weight: 700; font-size: 0.8rem;
   padding: 8px 14px; border-radius: 999px;
 }
 .btn-small.outline { background: none; border: 1px solid var(--border); color: var(--text-dim); }
+
+/* caixa recolhida "Liquidação manual" (ecrã Gerir jogo) — recurso, o
+   automatismo (ESPN) é o caminho normal */
+.settle-box { margin: 22px 0 10px; }
+.settle-box > summary {
+  list-style: none; cursor: pointer;
+  display: flex; align-items: center; gap: 8px;
+  background: var(--bg-card); border: 1px dashed var(--border);
+  border-radius: var(--radius); padding: 12px 14px;
+  font-weight: 700; font-size: 0.9rem; color: var(--text-dim);
+}
+.settle-box > summary::-webkit-details-marker { display: none; }
+.settle-box > summary::after {
+  content: "▾"; margin-left: auto; color: var(--text-faint);
+  transition: transform 0.15s;
+}
+.settle-box[open] > summary { border-style: solid; border-color: var(--accent-border); }
+.settle-box[open] > summary::after { transform: rotate(180deg); }
+.settle-box .sb-badge {
+  font-size: 0.66rem; font-weight: 800; white-space: nowrap;
+  background: var(--accent-soft); color: var(--accent);
+  border: 1px solid var(--accent-border);
+  padding: 2px 8px; border-radius: 999px;
+}
+.settle-box > .card { margin-top: 10px; }
 
 /* ---------- Formulários (admin) ---------- */
 .field-label {

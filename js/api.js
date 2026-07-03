@@ -370,6 +370,8 @@ const liveAPI = {
       const row = {
         id: String(b.id),
         match: matchLabel,
+        market: mk.name ?? "",
+        option: b.market_options?.label ?? "",
         pick: `${mk.name ?? ""} · ${b.market_options?.label ?? ""}`,
         stake: b.stake,
         secret: !closed,

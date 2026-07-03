@@ -15,7 +15,7 @@ const $ = (sel) => document.querySelector(sel);
 const state = {
   session: null,
   profile: null,
-  slip: null,     // { marketId, optionId, matchLabel, marketName, optionLabel, potTotal, optionPool, stake }
+  slip: null,     // { marketId, optionId, matchLabel, marketName, optionLabel, potTotal, stake }
   detail: null,   // último detalhe de jogo carregado (para o boletim)
 };
 
@@ -320,7 +320,7 @@ async function renderJogoDetalhe(matchId, opts = {}) {
   const banner =
     phase === "open" ? `
       <div class="callout"><span class="ico">🤫</span>
-        <span>As apostas são <strong>secretas</strong> até ao apito inicial. Depois o livro abre e toda a malta vê onde puseste as fichas.</span>
+        <span>As apostas são <strong>secretas</strong> até ao apito inicial — só se vê o <strong>total do pote</strong> de cada mercado. Depois o livro abre e toda a malta vê onde puseste as fichas.</span>
       </div>` :
     phase === "live" ? `
       <div id="live-banner"></div>
@@ -390,19 +390,19 @@ function marketCardHtml(mk, phase, knockout) {
         ${noteHtml}
         <div class="options ${mk.options.length === 2 ? "cols-2" : ""}">
           ${mk.options.map((o) => {
+            // Antes do apito só se mostra o pote total do mercado — as pools
+            // por opção (tendências da malta) só se revelam com o livro aberto.
             const isMine = mk.mine && String(mk.mine.optionId) === String(o.id);
             if (locked) {
               return `
                 <div class="option-btn ${isMine ? "opt-mine" : "is-dim"}">
                   ${isMine ? `<span class="opt-tags"><span class="opt-tag tag-mine">a tua</span></span>` : ""}
                   <span class="opt-label">${escapeHtml(o.label)}</span>
-                  <span class="opt-pool">🪙 ${o.pool} no pote</span>
                 </div>`;
             }
             return `
               <button class="option-btn ${isMine ? "selected" : ""}" data-opt="${o.id}" onclick="openSlip('${mk.id}','${o.id}', this)">
                 <span class="opt-label">${escapeHtml(o.label)}</span>
-                <span class="opt-pool">🪙 ${o.pool} no pote</span>
               </button>`;
           }).join("")}
         </div>
@@ -539,18 +539,9 @@ function openSlip(marketId, optionId, btn) {
     marketName: mk.name,
     optionLabel: opt.label,
     potTotal: mk.pot,
-    optionPool: opt.pool,
     stake: 25,
   };
   drawSlip();
-}
-
-function projection(s) {
-  // pool betting: quota do pote total pela fatia da opção (SPECS §6)
-  const newPool = s.optionPool + s.stake;
-  const newTotal = s.potTotal + s.stake;
-  if (newPool <= 0) return s.stake;
-  return Math.round(newTotal * (s.stake / newPool));
 }
 
 function drawSlip() {
@@ -572,8 +563,8 @@ function drawSlip() {
           <button class="stake-chip ${s.stake === v ? "selected" : ""}" ${v > maxChips ? "disabled" : ""} onclick="setStake(${v})">🪙 ${v}</button>`).join("")}
       </div>
       <div class="slip-projection">
-        <span>Se acertares (pote atual)</span>
-        <strong>≈ 🪙 ${projection(s)}</strong>
+        <span>Pote deste mercado (com a tua aposta)</span>
+        <strong>🪙 ${(s.potTotal + s.stake).toLocaleString("pt-PT")}</strong>
       </div>
       <button class="btn-primary" ${s.stake > maxChips ? "disabled" : ""} onclick="confirmBet()">Confirmar aposta 🤫</button>
     </div>`;
@@ -621,20 +612,25 @@ async function renderApostas() {
   shell(loadingScreen());
   const { pending, settled } = await API.getMyBets();
 
-  const row = (b) => `
-    <div class="bet-row">
-      <div class="bet-info">
-        <div class="bet-match">${escapeHtml(b.match)}</div>
-        <div class="bet-pick">${escapeHtml(b.pick)}</div>
-        ${b.secret ? `<span class="bet-secret">🤫 Secreta até ao apito inicial</span>` : ""}
+  const row = (b) => {
+    const status =
+      b.status === "won" ? `<span class="bet-status won">Ganhou +🪙 ${b.payout}</span>` :
+      b.status === "lost" ? `<span class="bet-status lost">Perdeu</span>` :
+      b.secret ? `<span class="bet-status secret">🤫 Secreta até ao apito</span>` :
+      `<span class="bet-status pending">Em jogo</span>`;
+    return `
+    <div class="card bet-card">
+      <div class="bet-match">${escapeHtml(b.match)}</div>
+      <div class="bet-pick-row">
+        <span class="bet-option">${escapeHtml(b.option || b.pick)}</span>
+        ${b.market ? `<span class="bet-market">${escapeHtml(b.market)}</span>` : ""}
       </div>
-      <div class="bet-stake">
-        🪙 ${b.stake}
-        ${b.status === "won" ? `<span class="bet-result won">Ganhou +🪙 ${b.payout}</span>` :
-          b.status === "lost" ? `<span class="bet-result lost">Perdeu</span>` :
-          `<span class="bet-result pending">Em jogo</span>`}
+      <div class="bet-foot">
+        <span class="bet-stake">Aposta 🪙 ${b.stake}</span>
+        ${status}
       </div>
     </div>`;
+  };
 
   shell(`
     <h1 class="page-title">As minhas apostas</h1>
@@ -654,25 +650,20 @@ async function renderClassificacao() {
 
   shell(`
     <h1 class="page-title">Classificação</h1>
-    <p class="page-sub">Quem manda na tabela e quem está na penúria</p>
-    <div class="callout"><span class="ico">🔒</span>
-      <span>As fichas apostadas em eventos por liquidar ficam <strong>cativas</strong> — contam para o teu valor na tabela até o evento ser liquidado.</span>
-    </div>
+    <p class="page-sub">Toca num jogador para veres o histórico e os detalhes</p>
     ${players.length ? players.map((p, i) => `
       <div class="lb-row ${i === 0 ? "king" : ""} ${p.isMe ? "me" : ""}" onclick="togglePlayerHistory('${p.id}', this)">
         <span class="lb-rank">${i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1}</span>
         <span class="lb-avatar">${p.avatar}</span>
         <div class="lb-info">
           <div class="lb-name">${escapeHtml(p.name)}${p.isMe ? " (tu)" : ""}</div>
-          <div class="lb-badges">${p.badges.length ? p.badges.map(escapeHtml).join(" · ") : "—"}</div>
+          ${p.badges.length ? `<div class="lb-badges">${p.badges.map(escapeHtml).join(" · ")}</div>` : ""}
         </div>
         <div class="lb-chips">
           <span class="amount">🪙 ${p.chips.toLocaleString("pt-PT")}</span>
-          ${p.locked > 0 ? `<span class="lb-locked">🔒 ${p.locked.toLocaleString("pt-PT")} cativas</span>` : ""}
-          ${p.delta ? `<span class="delta ${p.delta >= 0 ? "delta-up" : "delta-down"}">${p.delta >= 0 ? "▲" : "▼"} ${Math.abs(p.delta)} recente</span>` : ""}
         </div>
       </div>
-      <div class="lb-history" id="lbh-${p.id}"></div>`).join("") : `<div class="empty"><span class="ico">🏆</span>Ainda sem jogadores na mesa.</div>`}
+      <div class="lb-history" id="lbh-${p.id}" data-locked="${p.locked || 0}" data-delta="${p.delta || 0}"></div>`).join("") : `<div class="empty"><span class="ico">🏆</span>Ainda sem jogadores na mesa.</div>`}
   `);
 }
 
@@ -694,16 +685,22 @@ async function togglePlayerHistory(pid, rowEl) {
   panel.innerHTML = `<div class="reveal-empty">A carregar histórico…</div>`;
   try {
     const h = await API.getPlayerHistory(pid);
-    panel.innerHTML = historyPanelHtml(h);
+    panel.innerHTML = historyPanelHtml(h, Number(panel.dataset.locked || 0), Number(panel.dataset.delta || 0));
     panel.dataset.loaded = "1";
   } catch (e) {
     panel.innerHTML = `<div class="reveal-empty">❌ ${escapeHtml(e.message)}</div>`;
   }
 }
 
-function historyPanelHtml(h) {
-  if (!h.items.length) return `<div class="reveal-empty">Ainda sem apostas resolvidas 📜</div>`;
-  const head = `<div class="lbh-summary">✅ ${h.won} ${h.won === 1 ? "certa" : "certas"} · ❌ ${h.lost} ${h.lost === 1 ? "errada" : "erradas"}</div>`;
+function historyPanelHtml(h, locked = 0, delta = 0) {
+  // Detalhes que saíram da linha da tabela (para ela respirar): fichas
+  // cativas em apostas por liquidar e a variação recente.
+  const meta = [];
+  if (locked > 0) meta.push(`<span>🔒 🪙 ${locked.toLocaleString("pt-PT")} cativas em apostas por liquidar</span>`);
+  if (delta) meta.push(`<span class="${delta >= 0 ? "up" : "down"}">${delta >= 0 ? "▲" : "▼"} 🪙 ${Math.abs(delta).toLocaleString("pt-PT")} recente</span>`);
+  const metaHtml = meta.length ? `<div class="lbh-meta">${meta.join("")}</div>` : "";
+  if (!h.items.length) return `${metaHtml}<div class="reveal-empty">Ainda sem apostas resolvidas 📜</div>`;
+  const head = `${metaHtml}<div class="lbh-summary">✅ ${h.won} ${h.won === 1 ? "certa" : "certas"} · ❌ ${h.lost} ${h.lost === 1 ? "errada" : "erradas"}</div>`;
   const rows = h.items.map((it) => `
     <div class="reveal-line">
       <div class="lbh-info">
@@ -818,20 +815,20 @@ async function renderAdmin() {
         <button class="btn-small" onclick="approveBailout('${escapeAttr(b.id)}','${escapeAttr(b.who)}')">Aprovar</button>
       </div>`).join("") : `<div class="empty" style="padding:20px"><span class="ico">💸</span>Sem pedidos de resgate.</div>`}
 
-    <div class="section-label">Jogos — editar e liquidar</div>
+    <div class="section-label">Jogos — toca para gerir</div>
     ${games.length ? games.map((m) => {
       const needsSettle = toSettleIds.has(String(m.id));
       const sub = needsSettle
         ? `⚠️ resultado por liquidar${m.status === "live" ? " · a decorrer" : ""}`
         : `${m.kickoff}${m.status === "live" ? " · a decorrer" : ""}`;
       return `
-      <div class="card admin-item">
+      <button class="card admin-item tappable" onclick="location.hash='#/editar/${m.id}'">
         <div class="desc">
           <div class="t">${m.flagA} ${escapeHtml(m.teamA)} vs ${escapeHtml(m.teamB)} ${m.flagB}</div>
           <div class="s" ${needsSettle ? 'style="color:var(--risk-high);font-weight:700"' : ""}>${escapeHtml(sub)}</div>
         </div>
-        <button class="btn-small ${needsSettle ? "" : "outline"}" onclick="location.hash='#/editar/${m.id}'">${needsSettle ? "Liquidar" : "Gerir"}</button>
-      </div>`;
+        <span class="chev">›</span>
+      </button>`;
     }).join("") : `<div class="empty" style="padding:20px"><span class="ico">📅</span>Sem jogos para gerir.</div>`}
 
     <div class="section-label">Gestão</div>
@@ -865,6 +862,10 @@ async function approveBailout(id, who) {
 function settleStatusLabel(s) {
   return s === "settled" ? "✅ Liquidado" : s === "void" ? "🚫 Anulado" : "Por liquidar";
 }
+
+/* Guarda o estado aberto/fechado da caixa "Liquidação manual" para que os
+   re-renders (guardar resultado, liquidar mercado) não a fechem. */
+function settleBoxToggled(el) { state.settleOpen = el.open; }
 
 async function saveScore(matchId) {
   const a = $("#scoreA").value, b = $("#scoreB").value;
@@ -955,14 +956,19 @@ async function renderEditarJogo(matchId) {
   shell(loadingScreen());
   const { match, markets } = await API.getEditForm(matchId);
 
+  // A caixa "Liquidação manual" lembra-se de estar aberta entre re-renders
+  // (guardar resultado / liquidar um mercado voltam a desenhar o ecrã).
+  if (state.settleFor !== String(matchId)) { state.settleFor = String(matchId); state.settleOpen = false; }
+
   const have = new Set(markets.map((mk) => mk.name));
   const missing = MARKET_CATALOG.filter((c) => !have.has(c.name));
   const scoreKnown = match.scoreA != null && match.scoreB != null;
   const started = match.status !== "open";
+  const unsettled = markets.filter((mk) => mk.status !== "settled" && mk.status !== "void");
 
-  // Cartão de mercado unificado: gerir (remover) + liquidar (escolher vencedora
-  // / anular) no mesmo sítio. Sem resultado ainda? Mostra na mesma os botões —
-  // a "Decisão por penáltis" e casos manuais não dependem do marcador.
+  // Cartão de mercado: só gestão (estado + remover). Liquidar vive em baixo,
+  // na caixa recolhida "Liquidação manual" — em regra é o automatismo (ESPN)
+  // que fecha os mercados; isto é o recurso.
   const marketCard = (mk) => {
     const done = mk.status === "settled";
     const voided = mk.status === "void";
@@ -976,23 +982,35 @@ async function renderEditarJogo(matchId) {
           </span>
           <span class="market-pot">Pote 🪙 ${mk.pot}</span>
         </div>
-        <div class="market-note" style="margin-top:0">
+        <div class="market-note" style="margin:0">
           ${settleStatusLabel(mk.status)}${winner ? ` · vencedora: <strong>${escapeHtml(winner)}</strong>` : ""} · ${mk.nOptions} opções
         </div>
         ${done || voided ? "" : `
-          <div class="options ${mk.options.length === 2 ? "cols-2" : ""}">
-            ${mk.options.map((o) => `
-              <button class="option-btn ${mk.winningOptionId === o.id ? "opt-winner" : ""}" onclick="pickWinner('${escapeAttr(match.id)}','${escapeAttr(mk.id)}','${escapeAttr(o.id)}')">
-                <span class="opt-label">${escapeHtml(o.label)}</span>
-              </button>`).join("")}
-          </div>
-          <div class="market-locked-foot" style="justify-content:flex-start;gap:8px;color:var(--text-faint)">
-            <button class="btn-small outline" onclick="voidMarket('${escapeAttr(match.id)}','${escapeAttr(mk.id)}')">Anular (reembolso)</button>
+          <div class="market-locked-foot" style="justify-content:flex-end">
             <button class="btn-small outline" style="border-color:rgba(240,86,74,0.4);color:var(--risk-high)"
               onclick="adminRemoveMarket('${escapeAttr(match.id)}','${escapeAttr(mk.id)}',${mk.pot},'${escapeAttr(mk.name)}')">Remover</button>
           </div>`}
       </div>`;
   };
+
+  // Cartão de liquidação (dentro da caixa de recurso): tocar na vencedora
+  // liquida; "Anular" reembolsa toda a gente.
+  const settleCard = (mk) => `
+    <div class="card market">
+      <div class="market-title-row">
+        <span class="market-title">${escapeHtml(mk.name)}</span>
+        <span class="market-pot">Pote 🪙 ${mk.pot}</span>
+      </div>
+      <div class="options ${mk.options.length === 2 ? "cols-2" : ""}">
+        ${mk.options.map((o) => `
+          <button class="option-btn" onclick="pickWinner('${escapeAttr(match.id)}','${escapeAttr(mk.id)}','${escapeAttr(o.id)}')">
+            <span class="opt-label">${escapeHtml(o.label)}</span>
+          </button>`).join("")}
+      </div>
+      <div class="market-locked-foot" style="justify-content:flex-start">
+        <button class="btn-small outline" onclick="voidMarket('${escapeAttr(match.id)}','${escapeAttr(mk.id)}')">Anular (reembolso)</button>
+      </div>
+    </div>`;
 
   shell(`
     <button class="back-btn" onclick="location.hash='#/admin'">← Admin</button>
@@ -1012,18 +1030,6 @@ async function renderEditarJogo(matchId) {
       <button class="btn-primary" onclick="saveMatchEdit('${escapeAttr(match.id)}')">Guardar alterações</button>
     </div>
 
-    <div class="section-label">Resultado & liquidação</div>
-    <div class="card">
-      <label class="field-label">Resultado ao fim do jogo (prolongamento incl., sem penáltis)</label>
-      <div style="display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:4px">
-        <input id="scoreA" type="number" min="0" inputmode="numeric" value="${match.scoreA ?? ""}" style="width:64px;text-align:center;font-size:1.3rem;font-weight:800;padding:10px;background:var(--bg-elev);border:1px solid var(--border);border-radius:10px;color:var(--text)">
-        <span style="font-weight:800">–</span>
-        <input id="scoreB" type="number" min="0" inputmode="numeric" value="${match.scoreB ?? ""}" style="width:64px;text-align:center;font-size:1.3rem;font-weight:800;padding:10px;background:var(--bg-elev);border:1px solid var(--border);border-radius:10px;color:var(--text)">
-      </div>
-      <button class="btn-primary" onclick="saveScore('${escapeAttr(match.id)}')">Guardar resultado</button>
-      <div class="market-note" style="margin:10px 0 0">🏁 ${scoreKnown ? "Toca na opção <strong>vencedora</strong> de cada mercado para o liquidar (paga o pote proporcionalmente ao stake)." : "Guarda o resultado primeiro; depois liquida cada mercado tocando na opção vencedora."}</div>
-    </div>
-
     <div class="section-label">Mercados deste jogo</div>
     ${markets.length ? markets.map(marketCard).join("") : `<div class="empty" style="padding:20px"><span class="ico">🃏</span>Sem mercados. Adiciona em baixo.</div>`}
 
@@ -1037,6 +1043,25 @@ async function renderEditarJogo(matchId) {
         </div>
         <button class="btn-small" onclick="adminAddMarket('${escapeAttr(match.id)}',${MARKET_CATALOG.indexOf(c)})">+ Abrir</button>
       </div>`).join("") : `<div class="empty" style="padding:20px"><span class="ico">✅</span>Já tens todos os mercados do catálogo.</div>`}
+
+    <details class="settle-box" ${state.settleOpen ? "open" : ""} ontoggle="settleBoxToggled(this)">
+      <summary>🧰 Liquidação manual${unsettled.length ? ` <span class="sb-badge">${unsettled.length} por liquidar</span>` : ""}</summary>
+      <div class="market-note" style="margin:10px 2px">
+        Em regra os resultados são liquidados <strong>automaticamente</strong> (ESPN).
+        Usa isto só se o automatismo falhar ou para mercados que ele não decide.
+      </div>
+      <div class="card">
+        <label class="field-label">Resultado ao fim do jogo (prolongamento incl., sem penáltis)</label>
+        <div style="display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:4px">
+          <input id="scoreA" type="number" min="0" inputmode="numeric" value="${match.scoreA ?? ""}" style="width:64px;text-align:center;font-size:1.3rem;font-weight:800;padding:10px;background:var(--bg-elev);border:1px solid var(--border);border-radius:10px;color:var(--text)">
+          <span style="font-weight:800">–</span>
+          <input id="scoreB" type="number" min="0" inputmode="numeric" value="${match.scoreB ?? ""}" style="width:64px;text-align:center;font-size:1.3rem;font-weight:800;padding:10px;background:var(--bg-elev);border:1px solid var(--border);border-radius:10px;color:var(--text)">
+        </div>
+        <button class="btn-primary" onclick="saveScore('${escapeAttr(match.id)}')">Guardar resultado</button>
+        <div class="market-note" style="margin:10px 0 0">🏁 ${scoreKnown ? "Toca na opção <strong>vencedora</strong> de cada mercado para o liquidar (paga o pote proporcionalmente ao stake)." : "Guarda o resultado primeiro; depois liquida cada mercado tocando na opção vencedora."}</div>
+      </div>
+      ${unsettled.length ? unsettled.map(settleCard).join("") : `<div class="empty" style="padding:16px"><span class="ico">✅</span>Nada por liquidar neste jogo.</div>`}
+    </details>
 
     <div class="section-label">Zona perigosa</div>
     <div class="card">
@@ -1379,7 +1404,7 @@ Object.assign(window, {
   togglePlayerHistory,
   doBailout,
   approvePlayer, approveBailout,
-  saveScore, pickWinner, voidMarket,
+  saveScore, pickWinner, voidMarket, settleBoxToggled,
   submitCreateMatch,
   saveMatchEdit, adminAddMarket, adminRemoveMarket, adminRemoveMatch,
   saveDefaultMarkets, applyDefaultMarkets,
