@@ -12,7 +12,14 @@
   <link rel="stylesheet" href="css/styles.css" />
 </head>
 <body>
-  <div id="app"></div>
+  <div id="app">
+    <!-- Ecrã de load inicial: fica visível enquanto o boot() corre e é
+         substituído assim que o primeiro render escreve no #app. -->
+    <div class="app-loading">
+      <h1 class="app-loading__title">Bet4Fun ⚽</h1>
+      <div class="app-loading__spinner" role="status" aria-label="A carregar…"></div>
+    </div>
+  </div>
   <!-- ESM: app.js importa api.js → supabase.js → config.js -->
   <script type="module" src="js/app.js"></script>
 </body>
