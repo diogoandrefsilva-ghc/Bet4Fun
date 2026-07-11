@@ -88,14 +88,24 @@ END; $$;
 
 -- Liquidar mercado — pool betting (admin)
 --
--- "Aposta da casa": settings('house_stake') fichas (por defeito 50) que a
--- casa mete em CADA mercado, sempre — não presas a nenhuma opção. Não são
--- debitadas a ninguém (a casa não tem saldo próprio nem transação); apenas
--- engordam o pote a dividir por quem acertar, para que apostar nunca seja
--- em vão só porque "ninguém apostou" ou "toda a gente apostou no mesmo"
--- (nesses casos, sem a casa, o vencedor limitar-se-ia a reaver o que pôs).
--- Só entra quando há pelo menos um vencedor — se ninguém acertar continua a
--- ser reembolso total (não há a quem dar o bónus da casa).
+-- "Aposta da casa": fichas que a casa mete no pote a dividir por quem
+-- acertar — não presas a nenhuma opção, não debitadas a ninguém (a casa
+-- não tem saldo nem transação própria). Duas regras:
+--
+--   1. Mercados normais: só entra settings('house_stake') fichas (por
+--      defeito 50) quando pot_vencedor = pot_total, ou seja, só apostou
+--      uma pessoa (e acertou) ou toda a gente apostou no mesmo palpite
+--      (e saiu certo). Sem a casa, esses vencedores limitar-se-iam a
+--      reaver o que puseram — um "reembolso" disfarçado. Quando há uma
+--      mistura real de vencedores e perdedores, os vencedores já lucram
+--      à custa de quem perdeu — a casa não entra.
+--   2. "Resultado exato" (o Jackpot, risco alto e raro de acertar): a casa
+--      entra SEMPRE que há vencedor, com settings('house_stake_exact')
+--      (por defeito 200) fichas POR CADA aposta feita no mercado — quanto
+--      mais gente jogar, maior o jackpot para quem acertar o resultado.
+--
+-- Em qualquer caso, se ninguém acertar (pot_vencedor = 0) continua a ser
+-- reembolso total — não há a quem dar o bónus da casa.
 CREATE OR REPLACE FUNCTION bet4fun.settle_market(p_market_id bigint, p_winning_option_id bigint)
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = bet4fun AS $$
 DECLARE
@@ -104,6 +114,7 @@ DECLARE
   v_pot_winner int;
   v_pot_paid int;
   v_house int;
+  v_n_bets int;
   r record;
   v_paid int;
   v_remainder int;
@@ -117,7 +128,7 @@ BEGIN
     RAISE EXCEPTION 'Opção vencedora inválida';
   END IF;
 
-  SELECT COALESCE(SUM(stake), 0) INTO v_pot_total  FROM bets WHERE market_id = p_market_id;
+  SELECT COALESCE(SUM(stake), 0), COUNT(*) INTO v_pot_total, v_n_bets FROM bets WHERE market_id = p_market_id;
   SELECT COALESCE(SUM(stake), 0) INTO v_pot_winner FROM bets WHERE market_id = p_market_id AND option_id = p_winning_option_id;
 
   IF v_pot_total = 0 THEN
@@ -131,7 +142,13 @@ BEGIN
     INSERT INTO transactions(profile_id, amount, kind, ref_bet_id)
       SELECT profile_id, stake, 'refund', id FROM bets WHERE market_id = p_market_id;
   ELSE
-    v_house := bet4fun.app_setting_int('house_stake', 50);
+    IF v_market.name ILIKE 'Resultado exato%' THEN
+      v_house := bet4fun.app_setting_int('house_stake_exact', 200) * v_n_bets;
+    ELSIF v_pot_winner = v_pot_total THEN
+      v_house := bet4fun.app_setting_int('house_stake', 50);
+    ELSE
+      v_house := 0;
+    END IF;
     v_pot_paid := v_pot_total + GREATEST(v_house, 0);   -- pote real + bónus da casa
     -- cada vencedor recebe floor(pot_paid * stake / pot_winner)
     FOR r IN SELECT id, profile_id, stake FROM bets
