@@ -103,6 +103,7 @@ badges (
 settings (
   key text PK,                         -- 'initial_chips'=1000, 'bailout_chips'=200, 'min_stake'=5,
   value jsonb                          --   'min_match_stake'=100 (mínimo obrigatório por jogo; o resto expira)
+                                        --   'house_stake'=50 (fichas fixas da casa em cada mercado, ver §4.3)
 )
 
 -- Fichas expiradas por jogo (aposta mínima obrigatória não cumprida)
@@ -167,23 +168,32 @@ Validações **server-side** (falha com erro claro se violar):
   todas as policies e RPCs, independentemente do `status`).
 
 ### 4.3 `settle_market(market_id, winning_option_id)` — só admin
-Algoritmo do **pool betting**:
+Algoritmo do **pool betting** + **aposta da casa**:
 ```
 pote_total   = SUM(stake) de todas as apostas do mercado
 pote_vencedor= SUM(stake) das apostas na opção vencedora
 
 se pote_vencedor > 0:
+  pote_pago = pote_total + settings('house_stake')   -- bónus fixo da casa (por defeito 50),
+                                                      -- não presa a nenhuma opção
   para cada aposta vencedora:
-    payout = floor(pote_total * (stake / pote_vencedor))
+    payout = floor(pote_pago * (stake / pote_vencedor))
     inserir transação kind='payout' com +payout
   (restos de arredondamento: atribuir ao maior apostador vencedor, determinístico)
 
 se pote_vencedor = 0 (ninguém acertou):
-  reembolsar todas as apostas (kind='refund')       ← comportamento por defeito
+  reembolsar todas as apostas (kind='refund')       ← comportamento por defeito; a casa não paga
   OU acumular no "Jackpot de consolação" no fim     ← flag settings('rollover_unclaimed'), fase 2
 
 marcar market.status='settled', winning_option_id
 ```
+**Aposta da casa** (`settings('house_stake')`, por defeito 50): a casa não aposta numa opção
+específica — mete sempre estas fichas no pote a dividir por quem acertar, para que apostar nunca
+seja em vão só porque ninguém mais apostou ou porque toda a gente escolheu a mesma opção (nesses
+cenários, sem a casa, o vencedor limitar-se-ia a reaver o que pôs — um "reembolso" disfarçado).
+A casa não tem saldo nem transação própria; o bónus só aparece dentro do `payout` de quem ganhou.
+Põe `house_stake` a `0` para desligar.
+
 - Idempotente: liquidar um mercado já `settled` não faz nada.
 - `void_market(market_id)`: jogo cancelado/adiado → reembolso total.
 - Ao liquidar chama `expire_match_shortfalls(match_id)` (ver 4.6) — as fichas em falta expiram.
@@ -339,3 +349,7 @@ Chat interno (usa-se o WhatsApp), odds reais, notificações push, import autom�
 6. **Segredo individual até ao kickoff**, pools agregados públicos.
 7. Badge do bailout é **permanente** durante o torneio.
 8. Vanilla JS, sem framework, sem build step.
+9. **Aposta da casa**: `settings('house_stake')` fichas (por defeito 50) entram sempre no pote de
+   quem acerta em cada mercado liquidado com pelo menos um vencedor — nunca presas a uma opção,
+   nunca reembolsadas se ninguém acertar. Garante que apostar sozinho (ou "toda a gente no mesmo")
+   ainda compensa. Ver §4.3.

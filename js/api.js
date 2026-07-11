@@ -55,14 +55,14 @@ function throwErr(error, fallback) {
 
 /* Enriquece as linhas do livro de um mercado LIQUIDADO com o que cada um
    ganhou (pool betting — igual ao settle_market do SQL):
-     vencedores → floor(pote * stake / pote_vencedor)  (resto p/ o maior)
-     ninguém no vencedor → reembolso a todos
+     vencedores → floor((pote + aposta da casa) * stake / pote_vencedor)  (resto p/ o maior)
+     ninguém no vencedor → reembolso a todos (a casa não paga aqui)
    Anexa line.result = {kind:'won',amount} | {kind:'lost'} | {kind:'refund'}. */
-function enrichBookWithWinnings(mk, book) {
+function enrichBookWithWinnings(mk, book, houseStake) {
   if (mk.status !== "settled") return;
   const W = mk.winnerOptionId;
-  const pot = mk.pot;
   const winnerPool = W ? (mk.options.find((o) => String(o.id) === String(W))?.pool || 0) : 0;
+  const pot = mk.pot + (winnerPool > 0 ? Math.max(0, houseStake || 0) : 0);
 
   if (pot > 0 && winnerPool > 0) {
     const winners = [];
@@ -279,6 +279,9 @@ const liveAPI = {
     }));
     match.pot = marketsOut.reduce((a, mk) => a + mk.pot, 0);
 
+    const settings = await this._settingsMap();
+    const houseStake = Number(settings.house_stake ?? 50);
+
     // Livro aberto (só depois do apito; a RLS garante 0 linhas antes).
     // Agrupado por opção: { "marketId:optionId": [ {who, avatar, stake}, ... ] }
     const book = {};
@@ -298,14 +301,13 @@ const liveAPI = {
       });
       Object.values(book).forEach((arr) => arr.sort((x, y) => y.stake - x.stake));
       // Quanto é que cada um ganhou (pool betting) — só nos mercados liquidados.
-      marketsOut.forEach((mk) => enrichBookWithWinnings(mk, book));
+      marketsOut.forEach((mk) => enrichBookWithWinnings(mk, book, houseStake));
     }
 
     // Fichas expiradas por jogo (aposta mínima obrigatória). Só depois do apito.
     //   reais   → tabela chip_expiries (débito já feito na liquidação)
     //   projetadas → quem apostou < mínimo mas o jogo ainda não liquidou
     let expiries = [];
-    const settings = await this._settingsMap();
     const minMatch = Number(settings.min_match_stake ?? 100);
     if (!open && mkIds.length) {
       if (minMatch > 0) {
@@ -331,7 +333,7 @@ const liveAPI = {
       }
     }
 
-    return { match, open, markets: marketsOut, book, expiries, minMatchStake: minMatch };
+    return { match, open, markets: marketsOut, book, expiries, minMatchStake: minMatch, houseStake };
   },
 
   /* ----- Apostar ----- */
@@ -469,13 +471,15 @@ const liveAPI = {
       const { data: pools } = await supabase.from("market_pools").select("*").in("market_id", ids);
       (pools || []).forEach((p) => { poolMap[`${p.market_id}:${p.option_id}`] = p.pool; });
     }
+    const settings = await this._settingsMap();
+    const houseStake = Number(settings.house_stake ?? 50);
 
     let won = 0, lost = 0;
     const items = settled.map((b) => {
       const mk = b.markets || {};
       const mt = mk.matches || {};
-      const pot = potMap[b.market_id] || 0;
       const winnerPool = poolMap[`${b.market_id}:${mk.winning_option_id}`] || 0;
+      const pot = (potMap[b.market_id] || 0) + (winnerPool > 0 ? Math.max(0, houseStake) : 0);
       let status = "lost", payout = 0;
       if (winnerPool === 0) {
         status = "refund";                                   // ninguém acertou → reembolso
