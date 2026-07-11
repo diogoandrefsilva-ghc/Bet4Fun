@@ -54,24 +54,29 @@ com *"function ... does not exist"*.
 ## Definições (tabela `settings`)
 
 `initial_chips` (1000) · `bailout_chips` (200) · `min_stake` (5) ·
-`min_match_stake` (100) · `house_stake` (50) · `show_pools_before_kickoff` (true) · `admin_email`.
+`min_match_stake` (100) · `house_stake` (50) · `house_stake_exact` (200) ·
+`show_pools_before_kickoff` (true) · `admin_email`.
 Ex.: `update bet4fun.settings set value='1500'::jsonb where key='initial_chips';`
 
 `min_match_stake` é a **aposta mínima obrigatória por jogo**: quem não apostar pelo menos essas
 fichas num jogo vê o que faltar **expirar** (débito `kind='expiry'` + linha em `chip_expiries`)
 quando o jogo é liquidado. Põe `0` para desligar a regra.
 
-`house_stake` é a **"aposta da casa"**: fichas fixas (não presas a nenhuma opção) que a casa
-mete em cada mercado liquidado com pelo menos um vencedor, só para engordar o pote dividido por
-quem acertou — para apostar nunca ser em vão só porque ninguém mais apostou ou porque toda a
-gente escolheu a mesma opção. Se ninguém acertar continua a ser reembolso total (a casa não paga
-nesse caso). Põe `0` para desligar. Ver `settle_market` em `functions.sql`.
+`house_stake` e `house_stake_exact` são a **"aposta da casa"**: fichas extra (não presas a
+nenhuma opção) que a casa mete no pote a dividir por quem acertou, sem debitar a ninguém. Nos
+mercados normais, `house_stake` (50) só entra quando só apostou uma pessoa ou toda a gente
+apostou no mesmo palpite — sem isto seria um "reembolso" disfarçado; havendo mistura real de
+vencedores e perdedores, a casa fica de fora. No mercado **Resultado exato**, `house_stake_exact`
+(200) entra **sempre** que há vencedor, multiplicado pelo nº de apostas feitas no mercado. Se
+ninguém acertar continua a ser reembolso total em qualquer mercado (a casa não paga nesse caso).
+Põe a `0` para desligar cada regra. Ver `settle_market` em `functions.sql`.
 
 ## Migrações (BD já existente)
 
 Para aplicar mudanças numa BD que já tem dados, corre os ficheiros de `db/migrations/` por data.
 A mais recente — **`2026-07-11_aposta_da_casa.sql`** — acrescenta `settings('house_stake')` e
-atualiza `settle_market` para pagar o bónus da casa aos vencedores. Antes dessa,
+`settings('house_stake_exact')` e atualiza `settle_market` para pagar o bónus da casa aos
+vencedores (regras acima). Antes dessa,
 **`2026-07-11_reset_e_perdas_por_nao_apostar.sql`** cria a RPC `reset_season()`
 (admin: zera classificações/saldos e volta a dar as fichas iniciais a todos os aprovados) e
 acrescenta a coluna `expired` à view `leaderboard` (total de fichas perdidas por não apostar o

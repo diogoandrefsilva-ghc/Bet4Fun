@@ -318,6 +318,8 @@ async function renderJogoDetalhe(matchId, opts = {}) {
   }).join("");
 
   const houseStake = detail.houseStake || 0;
+  const houseStakeExact = detail.houseStakeExact || 0;
+  const hasExact = detail.markets.some((mk) => mk.name.startsWith("Resultado exato"));
   const banner =
     phase === "open" ? `
       <div class="callout"><span class="ico">🤫</span>
@@ -325,7 +327,7 @@ async function renderJogoDetalhe(matchId, opts = {}) {
       </div>
       ${houseStake > 0 ? `
       <div class="callout"><span class="ico">🏛️</span>
-        <span>A <strong>casa</strong> mete sempre <strong>🪙 ${houseStake}</strong> em cada mercado, a dividir por quem acertar — não é aposta de ninguém, é só para quem acertar ganhar sempre mais do que apostou.</span>
+        <span>Se acertares sozinho num mercado (ou toda a gente apostar no mesmo palpite), a <strong>casa</strong> mete <strong>🪙 ${houseStake}</strong> extra a dividir por quem acertou — para nunca ires com as mãos a abanar.${hasExact && houseStakeExact > 0 ? ` No <strong>Resultado exato</strong> a casa entra sempre, com <strong>🪙 ${houseStakeExact}</strong> por cada aposta feita no mercado.` : ""}</span>
       </div>` : ""}` :
     phase === "live" ? `
       <div id="live-banner"></div>

@@ -53,16 +53,28 @@ function throwErr(error, fallback) {
   throw new Error(msg);
 }
 
+/* Aposta da casa — igual à regra do settle_market (SQL):
+     "Resultado exato" → house_stake_exact * nº de apostas no mercado, SEMPRE que há vencedor
+     outros mercados    → house_stake, só quando pote_vencedor = pote (1 apostador, ou todos no
+                          mesmo palpite) — senão seria um "reembolso" disfarçado
+     ninguém acertou    → 0 (a casa não paga) */
+function houseBonus(marketName, pot, winnerPool, nBets, houseStake, houseStakeExact) {
+  if (winnerPool <= 0) return 0;
+  if (/^Resultado exato/i.test(marketName || "")) return Math.max(0, houseStakeExact || 0) * (nBets || 0);
+  if (winnerPool === pot) return Math.max(0, houseStake || 0);
+  return 0;
+}
+
 /* Enriquece as linhas do livro de um mercado LIQUIDADO com o que cada um
    ganhou (pool betting — igual ao settle_market do SQL):
      vencedores → floor((pote + aposta da casa) * stake / pote_vencedor)  (resto p/ o maior)
      ninguém no vencedor → reembolso a todos (a casa não paga aqui)
    Anexa line.result = {kind:'won',amount} | {kind:'lost'} | {kind:'refund'}. */
-function enrichBookWithWinnings(mk, book, houseStake) {
+function enrichBookWithWinnings(mk, book, houseStake, houseStakeExact) {
   if (mk.status !== "settled") return;
   const W = mk.winnerOptionId;
   const winnerPool = W ? (mk.options.find((o) => String(o.id) === String(W))?.pool || 0) : 0;
-  const pot = mk.pot + (winnerPool > 0 ? Math.max(0, houseStake || 0) : 0);
+  const pot = mk.pot + houseBonus(mk.name, mk.pot, winnerPool, mk.nBets, houseStake, houseStakeExact);
 
   if (pot > 0 && winnerPool > 0) {
     const winners = [];
@@ -252,7 +264,8 @@ const liveAPI = {
       ? await supabase.from("market_totals").select("*").in("market_id", mkIds)
       : { data: [] };
     const poolMap = {}; (pools || []).forEach((p) => { poolMap[`${p.market_id}:${p.option_id}`] = p.pool; });
-    const totMap = {}; (totals || []).forEach((t) => { totMap[t.market_id] = t.pot; });
+    const totMap = {}; const nbMap = {};
+    (totals || []).forEach((t) => { totMap[t.market_id] = t.pot; nbMap[t.market_id] = t.n_bets; });
 
     // A minha aposta em cada mercado (visível sempre — RLS deixa ver a própria)
     const mineMap = {};
@@ -271,6 +284,7 @@ const liveAPI = {
       name: mk.name,
       status: mk.status,
       pot: totMap[mk.id] || 0,
+      nBets: nbMap[mk.id] || 0,
       mine: mineMap[mk.id] || null,
       winnerOptionId: mk.winning_option_id != null ? String(mk.winning_option_id) : null,
       options: (mk.market_options || [])
@@ -281,6 +295,7 @@ const liveAPI = {
 
     const settings = await this._settingsMap();
     const houseStake = Number(settings.house_stake ?? 50);
+    const houseStakeExact = Number(settings.house_stake_exact ?? 200);
 
     // Livro aberto (só depois do apito; a RLS garante 0 linhas antes).
     // Agrupado por opção: { "marketId:optionId": [ {who, avatar, stake}, ... ] }
@@ -301,7 +316,7 @@ const liveAPI = {
       });
       Object.values(book).forEach((arr) => arr.sort((x, y) => y.stake - x.stake));
       // Quanto é que cada um ganhou (pool betting) — só nos mercados liquidados.
-      marketsOut.forEach((mk) => enrichBookWithWinnings(mk, book, houseStake));
+      marketsOut.forEach((mk) => enrichBookWithWinnings(mk, book, houseStake, houseStakeExact));
     }
 
     // Fichas expiradas por jogo (aposta mínima obrigatória). Só depois do apito.
@@ -333,7 +348,7 @@ const liveAPI = {
       }
     }
 
-    return { match, open, markets: marketsOut, book, expiries, minMatchStake: minMatch, houseStake };
+    return { match, open, markets: marketsOut, book, expiries, minMatchStake: minMatch, houseStake, houseStakeExact };
   },
 
   /* ----- Apostar ----- */
@@ -464,22 +479,24 @@ const liveAPI = {
 
     const settled = (bets || []).filter((b) => b.markets?.status === "settled");
     const ids = [...new Set(settled.map((b) => b.market_id))];
-    const potMap = {}, poolMap = {};
+    const potMap = {}, poolMap = {}, nbMap = {};
     if (ids.length) {
       const { data: totals } = await supabase.from("market_totals").select("*").in("market_id", ids);
-      (totals || []).forEach((t) => { potMap[t.market_id] = t.pot; });
+      (totals || []).forEach((t) => { potMap[t.market_id] = t.pot; nbMap[t.market_id] = t.n_bets; });
       const { data: pools } = await supabase.from("market_pools").select("*").in("market_id", ids);
       (pools || []).forEach((p) => { poolMap[`${p.market_id}:${p.option_id}`] = p.pool; });
     }
     const settings = await this._settingsMap();
     const houseStake = Number(settings.house_stake ?? 50);
+    const houseStakeExact = Number(settings.house_stake_exact ?? 200);
 
     let won = 0, lost = 0;
     const items = settled.map((b) => {
       const mk = b.markets || {};
       const mt = mk.matches || {};
       const winnerPool = poolMap[`${b.market_id}:${mk.winning_option_id}`] || 0;
-      const pot = (potMap[b.market_id] || 0) + (winnerPool > 0 ? Math.max(0, houseStake) : 0);
+      const rawPot = potMap[b.market_id] || 0;
+      const pot = rawPot + houseBonus(mk.name, rawPot, winnerPool, nbMap[b.market_id], houseStake, houseStakeExact);
       let status = "lost", payout = 0;
       if (winnerPool === 0) {
         status = "refund";                                   // ninguém acertou → reembolso
