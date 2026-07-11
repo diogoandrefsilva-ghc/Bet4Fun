@@ -23,11 +23,13 @@ RETURNS int LANGUAGE plpgsql SECURITY DEFINER SET search_path = bet4fun AS $$
 DECLARE v_n int;
 BEGIN
   IF NOT bet4fun.is_admin() THEN RAISE EXCEPTION 'Apenas admin'; END IF;
-  DELETE FROM bets;
-  DELETE FROM chip_expiries;
-  DELETE FROM bailout_requests;
-  DELETE FROM badges;
-  DELETE FROM transactions;
+  -- WHERE true: o projeto tem a extensão pg-safeupdate ativa, que bloqueia
+  -- DELETE/UPDATE sem WHERE (mesmo dentro de SECURITY DEFINER).
+  DELETE FROM bets WHERE true;
+  DELETE FROM chip_expiries WHERE true;
+  DELETE FROM bailout_requests WHERE true;
+  DELETE FROM badges WHERE true;
+  DELETE FROM transactions WHERE true;
   INSERT INTO transactions(profile_id, amount, kind)
     SELECT id, bet4fun.app_setting_int('initial_chips', 1000), 'initial'
     FROM profiles WHERE is_approved;
