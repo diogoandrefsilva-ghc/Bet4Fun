@@ -13,6 +13,7 @@ Para evitar a complexidade de gerir *odds* reais e estáticas, o prémio de cada
 * **A Distribuição:** O total de fichas apostadas num determinado mercado por todos os jogadores acumula num "pote". 
 * **O Prémio:** Quem acertar no prognóstico divide o pote proporcionalmente à quantidade de fichas que apostou. 
 * **A Dinâmica:** Isto cria cenários divertidos. Se quase toda a malta apostar na vitória de Portugal, quem arriscar no empate ou na derrota pode rebentar o *Jackpot* sozinho e saltar para o topo da classificação.
+* **A Aposta da Casa:** Para ninguém perder tempo a apostar e depois ficar apenas "reembolsado" — porque ninguém mais apostou ou porque toda a gente escolheu o mesmo palpite — a Casa mete sempre 🪙 50 fichas fixas em cada mercado. Esta aposta não está presa a nenhum palpite específico: é só para engordar o pote e dividir por quem acertar. Resultado: acertar compensa sempre mais do que aquilo que se apostou, mesmo que sejas o único a apostar certo ou que toda a gente tenha ido pelo caminho óbvio.
 
 ### 📉 O Mecanismo de "Bancarrota" (Bailout)
 Se alguém for demasiado agressivo e perder as fichas todas logo na fase de grupos, o jogo não acaba para essa pessoa:

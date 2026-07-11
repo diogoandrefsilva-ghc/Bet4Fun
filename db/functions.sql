@@ -87,12 +87,23 @@ BEGIN
 END; $$;
 
 -- Liquidar mercado — pool betting (admin)
+--
+-- "Aposta da casa": settings('house_stake') fichas (por defeito 50) que a
+-- casa mete em CADA mercado, sempre — não presas a nenhuma opção. Não são
+-- debitadas a ninguém (a casa não tem saldo próprio nem transação); apenas
+-- engordam o pote a dividir por quem acertar, para que apostar nunca seja
+-- em vão só porque "ninguém apostou" ou "toda a gente apostou no mesmo"
+-- (nesses casos, sem a casa, o vencedor limitar-se-ia a reaver o que pôs).
+-- Só entra quando há pelo menos um vencedor — se ninguém acertar continua a
+-- ser reembolso total (não há a quem dar o bónus da casa).
 CREATE OR REPLACE FUNCTION bet4fun.settle_market(p_market_id bigint, p_winning_option_id bigint)
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = bet4fun AS $$
 DECLARE
   v_market markets;
   v_pot_total int;
   v_pot_winner int;
+  v_pot_paid int;
+  v_house int;
   r record;
   v_paid int;
   v_remainder int;
@@ -116,20 +127,22 @@ BEGIN
   END IF;
 
   IF v_pot_winner = 0 THEN
-    -- ninguém acertou: reembolso total (rollover fica para v2)
+    -- ninguém acertou: reembolso total (rollover fica para v2; a casa não paga aqui)
     INSERT INTO transactions(profile_id, amount, kind, ref_bet_id)
       SELECT profile_id, stake, 'refund', id FROM bets WHERE market_id = p_market_id;
   ELSE
-    -- cada vencedor recebe floor(pot_total * stake / pot_winner)
+    v_house := bet4fun.app_setting_int('house_stake', 50);
+    v_pot_paid := v_pot_total + GREATEST(v_house, 0);   -- pote real + bónus da casa
+    -- cada vencedor recebe floor(pot_paid * stake / pot_winner)
     FOR r IN SELECT id, profile_id, stake FROM bets
              WHERE market_id = p_market_id AND option_id = p_winning_option_id LOOP
       INSERT INTO transactions(profile_id, amount, kind, ref_bet_id)
-        VALUES (r.profile_id, floor(v_pot_total::numeric * r.stake / v_pot_winner), 'payout', r.id);
+        VALUES (r.profile_id, floor(v_pot_paid::numeric * r.stake / v_pot_winner), 'payout', r.id);
     END LOOP;
     -- resto de arredondamento → maior apostador vencedor (determinístico)
-    SELECT COALESCE(SUM(floor(v_pot_total::numeric * stake / v_pot_winner)), 0)
+    SELECT COALESCE(SUM(floor(v_pot_paid::numeric * stake / v_pot_winner)), 0)
       INTO v_paid FROM bets WHERE market_id = p_market_id AND option_id = p_winning_option_id;
-    v_remainder := v_pot_total - v_paid;
+    v_remainder := v_pot_paid - v_paid;
     IF v_remainder > 0 THEN
       SELECT id INTO v_top_bet FROM bets
         WHERE market_id = p_market_id AND option_id = p_winning_option_id

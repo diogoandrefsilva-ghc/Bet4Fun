@@ -317,11 +317,16 @@ async function renderJogoDetalhe(matchId, opts = {}) {
       </div>`;
   }).join("");
 
+  const houseStake = detail.houseStake || 0;
   const banner =
     phase === "open" ? `
       <div class="callout"><span class="ico">🤫</span>
         <span>As apostas são <strong>secretas</strong> até ao apito inicial — só se vê o <strong>total do pote</strong> de cada mercado. Depois o livro abre e toda a malta vê onde puseste as fichas.</span>
-      </div>` :
+      </div>
+      ${houseStake > 0 ? `
+      <div class="callout"><span class="ico">🏛️</span>
+        <span>A <strong>casa</strong> mete sempre <strong>🪙 ${houseStake}</strong> em cada mercado, a dividir por quem acertar — não é aposta de ninguém, é só para quem acertar ganhar sempre mais do que apostou.</span>
+      </div>` : ""}` :
     phase === "live" ? `
       <div id="live-banner"></div>
       <div class="callout warn"><span class="ico">📖</span>
