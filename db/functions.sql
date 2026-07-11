@@ -263,6 +263,30 @@ BEGIN
   END IF;
 END; $$;
 
+-- Reset da época (admin) — zera classificações e saldos. Apaga TODAS as
+-- apostas, fichas expiradas, pedidos de bailout, badges e o ledger inteiro,
+-- e volta a creditar as fichas iniciais (settings('initial_chips'), por
+-- defeito 1000) a cada jogador aprovado. Os jogos e mercados ficam como
+-- estão: os abertos voltam a aceitar apostas, os liquidados ficam como
+-- histórico (sem livro). IRREVERSÍVEL. Devolve o nº de jogadores creditados.
+-- Aplicar numa BD já existente: db/migrations/2026-07-11_reset_e_perdas_por_nao_apostar.sql
+CREATE OR REPLACE FUNCTION bet4fun.reset_season()
+RETURNS int LANGUAGE plpgsql SECURITY DEFINER SET search_path = bet4fun AS $$
+DECLARE v_n int;
+BEGIN
+  IF NOT bet4fun.is_admin() THEN RAISE EXCEPTION 'Apenas admin'; END IF;
+  DELETE FROM bets;
+  DELETE FROM chip_expiries;
+  DELETE FROM bailout_requests;
+  DELETE FROM badges;
+  DELETE FROM transactions;
+  INSERT INTO transactions(profile_id, amount, kind)
+    SELECT id, bet4fun.app_setting_int('initial_chips', 1000), 'initial'
+    FROM profiles WHERE is_approved;
+  GET DIAGNOSTICS v_n = ROW_COUNT;
+  RETURN v_n;
+END; $$;
+
 -- ---------------------------------------------------------------------
 -- Criação de conteúdo (admin)
 -- ---------------------------------------------------------------------

@@ -388,7 +388,26 @@ const liveAPI = {
         row.status = "pending"; pending.push(row);
       }
     });
-    return { pending, settled };
+
+    // Fichas perdidas por não apostar o mínimo por jogo (kind='expiry').
+    // As próprias linhas de chip_expiries são sempre visíveis (RLS).
+    const { data: expRows } = await supabase
+      .from("chip_expiries")
+      .select("amount,created_at,matches(team_a,flag_a,team_b,flag_b,kickoff_at,score_a,score_b)")
+      .eq("profile_id", uid)
+      .order("created_at", { ascending: false });
+    const expired = (expRows || []).map((e) => {
+      const mt = e.matches || {};
+      return {
+        match: mt.team_a
+          ? `${mt.flag_a || ""} ${mt.team_a} vs ${mt.team_b} ${mt.flag_b || ""} · ${fmtKickoff(mt.kickoff_at)}`
+          : "Jogo removido",
+        score: (mt.score_a != null && mt.score_b != null) ? `${mt.score_a}–${mt.score_b}` : null,
+        amount: e.amount,
+      };
+    });
+
+    return { pending, settled, expired };
   },
 
   /* ----- Classificação ----- */
@@ -405,6 +424,7 @@ const liveAPI = {
       avatar: p.avatar_emoji || "⚽",
       chips: p.chips,
       locked: p.locked || 0,   // fichas cativas (apostadas em eventos por liquidar)
+      expired: p.expired || 0, // fichas perdidas por não apostar o mínimo por jogo
       delta: p.delta || 0,
       badges: (p.badge_codes || []).map(badgeLabel),
       bankrupt: (p.chips - (p.locked || 0)) < minStake,  // teso = saldo gastável baixo
@@ -470,8 +490,30 @@ const liveAPI = {
         match: mt.team_a ? `${mt.flag_a || ""} ${mt.team_a} ${mid} ${mt.team_b} ${mt.flag_b || ""}` : (mk.name || ""),
         pick: `${mk.name ?? ""} · ${b.market_options?.label ?? ""}`,
         stake: b.stake, status, payout,
+        when: new Date(b.created_at).getTime() || 0,
       };
     });
+
+    // Fichas perdidas por não apostar o mínimo por jogo. As expirações só
+    // se materializam na liquidação (depois do apito), por isso a RLS já
+    // deixa ver as dos outros.
+    const { data: expRows } = await supabase
+      .from("chip_expiries")
+      .select("amount,created_at,matches(team_a,flag_a,team_b,flag_b,score_a,score_b)")
+      .eq("profile_id", profileId)
+      .order("created_at", { ascending: false });
+    (expRows || []).forEach((e) => {
+      const mt = e.matches || {};
+      const mid = (mt.score_a != null && mt.score_b != null) ? `${mt.score_a}–${mt.score_b}` : "vs";
+      items.push({
+        match: mt.team_a ? `${mt.flag_a || ""} ${mt.team_a} ${mid} ${mt.team_b} ${mt.flag_b || ""}` : "Jogo removido",
+        pick: "Não apostou o mínimo neste jogo",
+        stake: e.amount, status: "expired", payout: 0,
+        when: new Date(e.created_at).getTime() || 0,
+      });
+    });
+    items.sort((a, b) => b.when - a.when);
+
     return { items, won, lost };
   },
 
@@ -510,6 +552,15 @@ const liveAPI = {
     const { error } = await supabase.rpc("approve_bailout", { p_request_id: id });
     if (error) throwErr(error, "Falha ao aprovar o bailout");
     return { ok: true };
+  },
+
+  // Reset da época (admin): zera classificações e saldos — apaga apostas,
+  // expirações, bailouts, badges e o ledger, e volta a dar as fichas
+  // iniciais a todos os aprovados. Devolve o nº de jogadores creditados.
+  async resetSeason() {
+    const { data, error } = await supabase.rpc("reset_season");
+    if (error) throwErr(error, "Falha ao zerar a época");
+    return Number(data) || 0;
   },
 
   async getMatchesToSettle() {

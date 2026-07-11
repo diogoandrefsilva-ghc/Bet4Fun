@@ -223,13 +223,17 @@ CREATE OR REPLACE VIEW bet4fun.match_pots AS
 --   tabela quando alguém aposta.
 --   O `locked` é PRIVADO: só o próprio vê o seu cativo (o que cada um tem
 --   em jogo é estratégia); para os outros devolve 0.
+--   O `expired` é o total de fichas perdidas por não apostar o mínimo por
+--   jogo — PÚBLICO (as expirações já aparecem no detalhe de cada jogo; é
+--   para picar).
 CREATE OR REPLACE VIEW bet4fun.leaderboard AS
   SELECT p.id, p.display_name, p.avatar_emoji,
          (COALESCE(bal.chips, 0) + COALESCE(lk.locked, 0)) AS chips,
          COALESCE(d.delta, 0)                              AS delta,
          COALESCE(bg.codes, '{}'::text[])                  AS badge_codes,
          CASE WHEN p.id = auth.uid()
-              THEN COALESCE(lk.locked, 0) ELSE 0 END       AS locked
+              THEN COALESCE(lk.locked, 0) ELSE 0 END       AS locked,
+         COALESCE(ex.expired, 0)                           AS expired
   FROM bet4fun.profiles p
   LEFT JOIN bet4fun.balances bal ON bal.profile_id = p.id
   LEFT JOIN (
@@ -251,4 +255,9 @@ CREATE OR REPLACE VIEW bet4fun.leaderboard AS
     FROM bet4fun.badges
     GROUP BY profile_id
   ) bg ON bg.profile_id = p.id
+  LEFT JOIN (
+    SELECT profile_id, SUM(amount)::int AS expired
+    FROM bet4fun.chip_expiries
+    GROUP BY profile_id
+  ) ex ON ex.profile_id = p.id
   WHERE p.is_approved;

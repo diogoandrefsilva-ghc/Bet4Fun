@@ -610,7 +610,8 @@ function toast(msg) {
 
 async function renderApostas() {
   shell(loadingScreen());
-  const { pending, settled } = await API.getMyBets();
+  const { pending, settled, expired } = await API.getMyBets();
+  const totalExpired = (expired || []).reduce((a, e) => a + e.amount, 0);
 
   const row = (b) => {
     const status =
@@ -640,6 +641,17 @@ async function renderApostas() {
     ${pending.length ? pending.map(row).join("") : `<div class="empty"><span class="ico">🎟️</span>Nada em jogo. Cobarde?</div>`}
     <div class="section-label">Histórico</div>
     ${settled.length ? settled.map(row).join("") : `<div class="empty"><span class="ico">📜</span>Ainda sem histórico.</div>`}
+
+    ${totalExpired > 0 ? `
+      <div class="section-label">🔥 Perdidas por não apostar</div>
+      <div class="card">
+        <div class="market-note" style="margin-top:0">ℹ️ Fichas que expiraram porque não apostaste o mínimo obrigatório num jogo. Total perdido: <strong>🪙 ${totalExpired.toLocaleString("pt-PT")}</strong></div>
+        ${expired.map((e) => `
+          <div class="reveal-line">
+            <span class="rl-who">${escapeHtml(e.match)}${e.score ? ` · 🏁 ${e.score}` : ""}</span>
+            <span class="rl-result lost">expirou −🪙 ${e.amount}</span>
+          </div>`).join("")}
+      </div>` : ""}
   `);
 }
 
@@ -659,6 +671,7 @@ async function renderClassificacao() {
         <div class="lb-info">
           <div class="lb-name">${escapeHtml(p.name)}${p.isMe ? " (tu)" : ""}</div>
           ${p.badges.length ? `<div class="lb-badges">${p.badges.map(escapeHtml).join(" · ")}</div>` : ""}
+          ${p.expired > 0 ? `<div class="lb-badges" style="color:var(--loss)">🔥 perdeu 🪙 ${p.expired.toLocaleString("pt-PT")} por não apostar</div>` : ""}
         </div>
         <div class="lb-chips">
           <span class="amount">🪙 ${p.chips.toLocaleString("pt-PT")}</span>
@@ -706,14 +719,18 @@ function historyPanelHtml(h, locked = 0) {
     const status =
       it.status === "won" ? `<span class="bet-status won">Ganhou +🪙 ${it.payout}</span>` :
       it.status === "lost" ? `<span class="bet-status lost">Perdeu</span>` :
+      it.status === "expired" ? `<span class="bet-status lost">🔥 Expirou −🪙 ${it.stake}</span>` :
       `<span class="bet-status pending">↩️ Reembolso</span>`;
+    const foot = it.status === "expired"
+      ? escapeHtml(it.pick)
+      : `${escapeHtml(it.pick)} · aposta 🪙 ${it.stake}`;
     return `
     <div class="lbh-item">
       <div class="lbh-row1">
         <span class="lbh-match">${escapeHtml(it.match)}</span>
         ${status}
       </div>
-      <div class="lbh-pick">${escapeHtml(it.pick)} · aposta 🪙 ${it.stake}</div>
+      <div class="lbh-pick">${foot}</div>
     </div>`;
   }).join("");
   return metaHtml + rows;
@@ -848,7 +865,29 @@ async function renderAdmin() {
       <div class="desc"><div class="t">🃏 Mercados por defeito</div><div class="s">Escolhe os mercados que abrem em cada jogo novo</div></div>
       <button class="btn-small outline" onclick="location.hash='#/mercados'">Configurar</button>
     </div>
+
+    <div class="section-label">Zona perigosa</div>
+    <div class="card">
+      <p style="font-size:0.82rem;color:var(--text-dim);margin-bottom:12px">
+        Zerar a época apaga <strong>todas as apostas</strong>, o histórico de fichas,
+        as expirações, os badges e os bailouts — e toda a gente volta às fichas
+        iniciais (🪙 1000). Os jogos e mercados ficam como estão. Não há volta a dar.
+      </p>
+      <button class="btn-danger-outline" onclick="adminResetSeason()">Zerar classificações e saldos 🧨</button>
+    </div>
   `);
+}
+
+async function adminResetSeason() {
+  if (!confirm("Zerar a época? Apostas, saldos, badges e bailouts desaparecem e toda a gente volta às fichas iniciais. Isto é IRREVERSÍVEL.")) return;
+  const word = prompt('Última confirmação: escreve "RESET" para zerar tudo.');
+  if ((word || "").trim().toUpperCase() !== "RESET") { toast("Reset cancelado."); return; }
+  try {
+    const n = await API.resetSeason();
+    state.profile = await API.getMyProfile();
+    toast(`Época zerada — ${n} jogador(es) de volta às fichas iniciais 🧨`);
+    await renderAdmin();
+  } catch (e) { toast(`❌ ${e.message}`); }
 }
 
 async function approvePlayer(id) {
@@ -1407,7 +1446,7 @@ Object.assign(window, {
   toggleReveal, trocarPalpite,
   togglePlayerHistory,
   doBailout,
-  approvePlayer, approveBailout,
+  approvePlayer, approveBailout, adminResetSeason,
   saveScore, pickWinner, voidMarket, settleBoxToggled,
   submitCreateMatch,
   saveMatchEdit, adminAddMarket, adminRemoveMarket, adminRemoveMatch,

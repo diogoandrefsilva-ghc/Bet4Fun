@@ -205,6 +205,13 @@ para cada jogador aprovado (que já cá estava ao apito):
 - As fichas expiradas aparecem no **detalhe do jogo** (`#/jogo/:id`) à vista de todos — é para picar.
   Antes de o jogo liquidar, o detalhe mostra a expiração **projetada** (quem apostou < mínimo).
 
+### 4.5.c `reset_season()` — só admin
+Zera classificações e saldos ("recomeçar o jogo"): apaga **todas** as apostas, `chip_expiries`,
+`bailout_requests`, `badges` e o ledger `transactions` inteiro, e insere uma transação `initial`
+com `settings('initial_chips')` (1000) para cada jogador aprovado. Jogos e mercados ficam como
+estão (os abertos voltam a aceitar apostas). Irreversível — o UI pede confirmação dupla
+(escrever "RESET"). Devolve o nº de jogadores creditados.
+
 ### 4.4 `request_bailout(note)` / `approve_bailout(request_id)` — aprovação só admin
 - Só pode pedir se saldo < `min_stake` e não tem pedido `pending`;
 - Aprovação insere transação `kind='bailout'` (+`settings('bailout_chips')`) **e badge permanente `fmi`** ("💸 Financiado pelo FMI");
@@ -257,8 +264,8 @@ Checklist de batota a testar (o "primo QA"):
 | Jogos `#/jogos` | `renderJogos()` | `matches` + `market_pools` agregado por jogo; secção futures = `markets WHERE match_id IS NULL` |
 | Detalhe `#/jogo/:id` | `renderJogoDetalhe()` | mercados+opções+pools; se `now()>=closes_at` mostra **livro aberto** (`bets` reveladas com nome/avatar). Nos mercados liquidados, cada apostador mostra **quanto ganhou** (pool betting, calculado no cliente). Secção **Fichas expiradas** = `chip_expiries` (reais) ou projeção do que falta ao mínimo por jogo |
 | Boletim (slip) | `openSlip()/confirmBet()` | RPC `place_bet`; mostrar projeção `≈ pote_total * stake / (pool_opção + stake)` |
-| Apostas `#/apostas` | `renderApostas()` | `bets` próprias join mercados/jogos; estado won/lost via `winning_option_id` |
-| Classificação `#/classificacao` | `renderClassificacao()` | view leaderboard; realtime opcional (Supabase Realtime em `transactions`) |
+| Apostas `#/apostas` | `renderApostas()` | `bets` próprias join mercados/jogos; estado won/lost via `winning_option_id`; secção "Perdidas por não apostar" = `chip_expiries` próprias |
+| Classificação `#/classificacao` | `renderClassificacao()` | view leaderboard (inclui `expired` = total perdido por não apostar, visível na linha); histórico expandível junta `chip_expiries`; realtime opcional (Supabase Realtime em `transactions`) |
 | Perfil `#/perfil` | `renderPerfil()` | perfil + saldo + badges + stats; botão bailout (visível só se saldo < min_stake) |
 | Admin `#/admin` | `renderAdmin()` | bailouts pendentes; jogos por liquidar (form: resultado + vencedor por mercado); criar jogo/mercados; aprovar jogadores |
 

@@ -64,9 +64,10 @@ quando o jogo é liquidado. Põe `0` para desligar a regra.
 ## Migrações (BD já existente)
 
 Para aplicar mudanças numa BD que já tem dados, corre os ficheiros de `db/migrations/` por data.
-A mais recente — **`2026-07-03_minimo_por_jogo_expiracao.sql`** — cria a `chip_expiries`, o setting
-`min_match_stake`, o `kind='expiry'` no ledger e a RPC `expire_match_shortfalls` (chamada pelo
-`settle_market`). É idempotente. Numa BD limpa não é preciso: já vem tudo em `schema.sql`+`functions.sql`.
+A mais recente — **`2026-07-11_reset_e_perdas_por_nao_apostar.sql`** — cria a RPC `reset_season()`
+(admin: zera classificações/saldos e volta a dar as fichas iniciais a todos os aprovados) e
+acrescenta a coluna `expired` à view `leaderboard` (total de fichas perdidas por não apostar o
+mínimo por jogo). É idempotente. Numa BD limpa não é preciso: já vem tudo em `schema.sql`+`functions.sql`.
 
 ## Nota sobre IDs
 
